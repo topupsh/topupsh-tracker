@@ -1,0 +1,331 @@
+// Copyright 2026 Contextual, Inc.
+// This notice may not be modified or removed.
+// SPDX-License-Identifier: AGPL-3.0-only
+
+package auth
+
+import (
+	"context"
+	"errors"
+	"testing"
+
+	"github.com/golang/mock/gomock"
+	"github.com/mustafaturan/monoflake"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"github.com/topupsh/topupsh-tracker/backend/internal/data/entity"
+	"github.com/topupsh/topupsh-tracker/backend/internal/data/model"
+	"github.com/topupsh/topupsh-tracker/backend/internal/repository"
+	mockrepo "github.com/topupsh/topupsh-tracker/backend/internal/repository/mocks"
+	mockidgen "github.com/topupsh/topupsh-tracker/backend/internal/service/idgen/mocks"
+	"github.com/topupsh/topupsh-tracker/backend/internal/service/oauth"
+	mockoauth "github.com/topupsh/topupsh-tracker/backend/internal/service/oauth/mocks"
+	mocktoken "github.com/topupsh/topupsh-tracker/backend/internal/service/token/mocks"
+)
+
+var errBoom = errors.New("boom")
+
+type env struct {
+	ctrl   Controller
+	google *mockoauth.MockProvider
+	github *mockoauth.MockProvider
+	token  *mocktoken.MockService
+	users  *mockrepo.MockUserRepository
+	idgen  *mockidgen.MockService
+}
+
+func newEnv(t *testing.T) *env {
+	t.Helper()
+	mc := gomock.NewController(t)
+	e := &env{
+		google: mockoauth.NewMockProvider(mc),
+		github: mockoauth.NewMockProvider(mc),
+		token:  mocktoken.NewMockService(mc),
+		users:  mockrepo.NewMockUserRepository(mc),
+		idgen:  mockidgen.NewMockService(mc),
+	}
+	e.google.EXPECT().Name().Return(oauth.ProviderGoogle).AnyTimes()
+	e.github.EXPECT().Name().Return(oauth.ProviderGitHub).AnyTimes()
+	e.google.EXPECT().Label().Return("Google").AnyTimes()
+	e.github.EXPECT().Label().Return("GitHub").AnyTimes()
+	e.google.EXPECT().Icon().Return("").AnyTimes()
+	e.github.EXPECT().Icon().Return("<svg/>").AnyTimes()
+	e.ctrl = New(Params{
+		Providers: []oauth.Provider{e.google, e.github},
+		Token:     e.token,
+		Users:     e.users,
+		IDGen:     e.idgen,
+		BasePath:  "/app/",
+	})
+	return e
+}
+
+func TestGetAuthConfig(t *testing.T) {
+	e := newEnv(t)
+	rs := e.ctrl.GetAuthConfig(context.Background())
+	assert.Equal(t, []entity.AuthProvider{
+		{ID: "google", Name: "Google"},
+		{ID: "github", Name: "GitHub", Icon: "<svg/>"},
+	}, rs.Providers)
+}
+
+func TestStartLogin(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("unknown provider", func(t *testing.T) {
+		e := newEnv(t)
+		_, err := e.ctrl.StartLogin(ctx, &entity.StartLoginRequest{Provider: "x"})
+		assert.ErrorIs(t, err, ErrUnknownProvider)
+	})
+
+	t.Run("state error", func(t *testing.T) {
+		e := newEnv(t)
+		e.token.EXPECT().CreateStateToken("google", "/").Return("", errBoom)
+		_, err := e.ctrl.StartLogin(ctx, &entity.StartLoginRequest{Provider: "google"})
+		assert.ErrorIs(t, err, errBoom)
+	})
+
+	t.Run("provider unavailable", func(t *testing.T) {
+		e := newEnv(t)
+		e.token.EXPECT().CreateStateToken("github", "/").Return("st", nil)
+		e.github.EXPECT().AuthURL(gomock.Any(), "st").Return("", errBoom)
+		_, err := e.ctrl.StartLogin(ctx, &entity.StartLoginRequest{Provider: "github"})
+		assert.ErrorIs(t, err, ErrProviderUnavailable)
+	})
+
+	t.Run("ok sanitizes redirect", func(t *testing.T) {
+		e := newEnv(t)
+		e.token.EXPECT().CreateStateToken("github", "/").Return("st", nil)
+		e.github.EXPECT().AuthURL(gomock.Any(), "st").Return("https://github.com/login?state=st", nil)
+		rs, err := e.ctrl.StartLogin(ctx, &entity.StartLoginRequest{Provider: "github", RedirectURL: "//evil.com"})
+		require.NoError(t, err)
+		assert.Equal(t, &entity.StartLoginResponse{AuthURL: "https://github.com/login?state=st", State: "st"}, rs)
+	})
+}
+
+func validLogin() *entity.CompleteLoginRequest {
+	return &entity.CompleteLoginRequest{Provider: "google", Code: "code", State: "st", StateCookie: "st"}
+}
+
+func TestCompleteLogin_Rejections(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("unknown provider", func(t *testing.T) {
+		e := newEnv(t)
+		rq := validLogin()
+		rq.Provider = "x"
+		_, err := e.ctrl.CompleteLogin(ctx, rq)
+		assert.ErrorIs(t, err, ErrUnknownProvider)
+	})
+
+	t.Run("missing state", func(t *testing.T) {
+		e := newEnv(t)
+		_, err := e.ctrl.CompleteLogin(ctx, &entity.CompleteLoginRequest{Provider: "google"})
+		assert.ErrorIs(t, err, ErrInvalidState)
+	})
+
+	t.Run("state cookie mismatch", func(t *testing.T) {
+		e := newEnv(t)
+		rq := validLogin()
+		rq.StateCookie = "other"
+		_, err := e.ctrl.CompleteLogin(ctx, rq)
+		assert.ErrorIs(t, err, ErrInvalidState)
+	})
+
+	t.Run("state signature invalid", func(t *testing.T) {
+		e := newEnv(t)
+		e.token.EXPECT().ValidateStateToken("st", "google").Return("", errBoom)
+		_, err := e.ctrl.CompleteLogin(ctx, validLogin())
+		assert.ErrorIs(t, err, ErrInvalidState)
+	})
+
+	t.Run("unverified email", func(t *testing.T) {
+		e := newEnv(t)
+		e.token.EXPECT().ValidateStateToken("st", "google").Return("/", nil)
+		e.google.EXPECT().Exchange(ctx, "code").Return(nil, oauth.ErrNoVerifiedEmail)
+		_, err := e.ctrl.CompleteLogin(ctx, validLogin())
+		assert.ErrorIs(t, err, ErrEmailNotVerified)
+	})
+
+	t.Run("exchange fails", func(t *testing.T) {
+		e := newEnv(t)
+		e.token.EXPECT().ValidateStateToken("st", "google").Return("/", nil)
+		e.google.EXPECT().Exchange(ctx, "code").Return(nil, errBoom)
+		_, err := e.ctrl.CompleteLogin(ctx, validLogin())
+		assert.ErrorIs(t, err, ErrProviderExchange)
+	})
+}
+
+func expectExchange(e *env, ctx context.Context) {
+	e.token.EXPECT().ValidateStateToken("st", "google").Return("/settings", nil)
+	e.google.EXPECT().Exchange(ctx, "code").Return(&oauth.Identity{
+		Subject: "g1", Email: " New@Example.com ", Name: "New", Picture: "pic",
+	}, nil)
+}
+
+func TestCompleteLogin_NewUser(t *testing.T) {
+	ctx := context.Background()
+	e := newEnv(t)
+	expectExchange(e, ctx)
+	e.users.EXPECT().FindUserByEmail(ctx, "new@example.com").Return(model.User{}, repository.ErrNotFound)
+	e.idgen.EXPECT().NextID().Return(int64(1000))
+	e.users.EXPECT().CreateUser(ctx, gomock.Any()).DoAndReturn(func(_ context.Context, u model.User) (model.User, error) {
+		assert.Equal(t, model.User{
+			ID: 1000, Email: "new@example.com", Name: "New", Picture: "pic", Provider: "google",
+		}, u)
+		return u, nil
+	})
+	e.token.EXPECT().CreateSessionToken(monoflake.ID(1000).String()).Return("session", nil)
+
+	rs, err := e.ctrl.CompleteLogin(ctx, validLogin())
+	require.NoError(t, err)
+	assert.Equal(t, "session", rs.SessionToken)
+	assert.Equal(t, "/app/settings", rs.RedirectURL)
+	assert.Equal(t, int64(1000), rs.User.ID)
+}
+
+func TestCompleteLogin_CreateFails(t *testing.T) {
+	ctx := context.Background()
+	e := newEnv(t)
+	expectExchange(e, ctx)
+	e.users.EXPECT().FindUserByEmail(ctx, "new@example.com").Return(model.User{}, repository.ErrNotFound)
+	e.idgen.EXPECT().NextID().Return(int64(1000))
+	e.users.EXPECT().CreateUser(ctx, gomock.Any()).Return(model.User{}, errBoom)
+	_, err := e.ctrl.CompleteLogin(ctx, validLogin())
+	assert.ErrorIs(t, err, errBoom)
+}
+
+func TestCompleteLogin_FindFails(t *testing.T) {
+	ctx := context.Background()
+	e := newEnv(t)
+	expectExchange(e, ctx)
+	e.users.EXPECT().FindUserByEmail(ctx, "new@example.com").Return(model.User{}, errBoom)
+	_, err := e.ctrl.CompleteLogin(ctx, validLogin())
+	assert.ErrorIs(t, err, errBoom)
+}
+
+func TestCompleteLogin_ExistingUserUnchanged(t *testing.T) {
+	ctx := context.Background()
+	e := newEnv(t)
+	expectExchange(e, ctx)
+	existing := model.User{ID: 5, Email: "new@example.com", Name: "Kept", Picture: "kept"}
+	e.users.EXPECT().FindUserByEmail(ctx, "new@example.com").Return(existing, nil)
+	e.token.EXPECT().CreateSessionToken(monoflake.ID(5).String()).Return("session", nil)
+
+	rs, err := e.ctrl.CompleteLogin(ctx, validLogin())
+	require.NoError(t, err)
+	assert.Equal(t, "Kept", rs.User.Name)
+}
+
+func TestCompleteLogin_ExistingUserBackfilled(t *testing.T) {
+	ctx := context.Background()
+	e := newEnv(t)
+	expectExchange(e, ctx)
+	existing := model.User{ID: 5, Email: "new@example.com"}
+	e.users.EXPECT().FindUserByEmail(ctx, "new@example.com").Return(existing, nil)
+	e.users.EXPECT().UpdateUser(ctx, gomock.Any()).DoAndReturn(func(_ context.Context, u model.User) (model.User, error) {
+		assert.Equal(t, "New", u.Name)
+		assert.Equal(t, "pic", u.Picture)
+		return u, nil
+	})
+	e.token.EXPECT().CreateSessionToken(monoflake.ID(5).String()).Return("session", nil)
+
+	rs, err := e.ctrl.CompleteLogin(ctx, validLogin())
+	require.NoError(t, err)
+	assert.Equal(t, "New", rs.User.Name)
+}
+
+func TestCompleteLogin_UpdateFails(t *testing.T) {
+	ctx := context.Background()
+	e := newEnv(t)
+	expectExchange(e, ctx)
+	e.users.EXPECT().FindUserByEmail(ctx, "new@example.com").Return(model.User{ID: 5}, nil)
+	e.users.EXPECT().UpdateUser(ctx, gomock.Any()).Return(model.User{}, errBoom)
+	_, err := e.ctrl.CompleteLogin(ctx, validLogin())
+	assert.ErrorIs(t, err, errBoom)
+}
+
+func TestCompleteLogin_SessionFails(t *testing.T) {
+	ctx := context.Background()
+	e := newEnv(t)
+	expectExchange(e, ctx)
+	e.users.EXPECT().FindUserByEmail(ctx, "new@example.com").Return(model.User{ID: 5, Name: "n", Picture: "p"}, nil)
+	e.token.EXPECT().CreateSessionToken(gomock.Any()).Return("", errBoom)
+	_, err := e.ctrl.CompleteLogin(ctx, validLogin())
+	assert.ErrorIs(t, err, errBoom)
+}
+
+func TestAuthenticate(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("empty", func(t *testing.T) {
+		e := newEnv(t)
+		_, err := e.ctrl.Authenticate(ctx, &entity.AuthenticateRequest{})
+		assert.ErrorIs(t, err, ErrUnauthorized)
+	})
+
+	t.Run("invalid", func(t *testing.T) {
+		e := newEnv(t)
+		e.token.EXPECT().ValidateSessionToken("tok").Return("", errBoom)
+		_, err := e.ctrl.Authenticate(ctx, &entity.AuthenticateRequest{SessionToken: "tok"})
+		assert.ErrorIs(t, err, ErrUnauthorized)
+	})
+
+	t.Run("bad subject", func(t *testing.T) {
+		e := newEnv(t)
+		e.token.EXPECT().ValidateSessionToken("tok").Return("", nil)
+		_, err := e.ctrl.Authenticate(ctx, &entity.AuthenticateRequest{SessionToken: "tok"})
+		assert.ErrorIs(t, err, ErrUnauthorized)
+	})
+
+	t.Run("ok", func(t *testing.T) {
+		e := newEnv(t)
+		e.token.EXPECT().ValidateSessionToken("tok").Return(monoflake.ID(77).String(), nil)
+		rs, err := e.ctrl.Authenticate(ctx, &entity.AuthenticateRequest{SessionToken: "tok"})
+		require.NoError(t, err)
+		assert.Equal(t, int64(77), rs.UserID)
+	})
+}
+
+func TestGetCurrentUser(t *testing.T) {
+	ctx := context.Background()
+	rq := &entity.GetCurrentUserRequest{UserID: 5}
+
+	t.Run("deleted user", func(t *testing.T) {
+		e := newEnv(t)
+		e.users.EXPECT().FindUserByID(ctx, int64(5)).Return(model.User{}, repository.ErrNotFound)
+		_, err := e.ctrl.GetCurrentUser(ctx, rq)
+		assert.ErrorIs(t, err, ErrUnauthorized)
+	})
+
+	t.Run("db error", func(t *testing.T) {
+		e := newEnv(t)
+		e.users.EXPECT().FindUserByID(ctx, int64(5)).Return(model.User{}, errBoom)
+		_, err := e.ctrl.GetCurrentUser(ctx, rq)
+		assert.ErrorIs(t, err, errBoom)
+	})
+
+	t.Run("ok", func(t *testing.T) {
+		e := newEnv(t)
+		e.users.EXPECT().FindUserByID(ctx, int64(5)).Return(model.User{ID: 5, Email: "a@b.c"}, nil)
+		rs, err := e.ctrl.GetCurrentUser(ctx, rq)
+		require.NoError(t, err)
+		assert.Equal(t, "a@b.c", rs.User.Email)
+	})
+}
+
+func TestSanitizeRedirect(t *testing.T) {
+	cases := map[string]string{
+		"":                   "/",
+		"/":                  "/",
+		"/settings?tab=1":    "/settings?tab=1",
+		"//evil.com":         "/",
+		"/\\evil.com":        "/",
+		"https://evil.com/x": "/",
+		"relative":           "/",
+	}
+	for in, want := range cases {
+		assert.Equal(t, want, sanitizeRedirect(in), in)
+	}
+}

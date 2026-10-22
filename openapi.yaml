@@ -1,0 +1,425 @@
+# Copyright 2026 Contextual, Inc.
+# This notice may not be modified or removed.
+# SPDX-License-Identifier: AGPL-3.0-only
+
+openapi: 3.1.0
+info:
+  title: topupsh-tracker API
+  version: 0.1.0
+  description: |
+    The REST API lives under `/api/v1`. Sign-in for the web app lives under
+    `/auth`.
+
+    Authenticate API calls from the web app with the
+    `topupsh_tracker_session` cookie. Root-only setup routes take the
+    `topupsh_tracker_root` cookie set by `POST /api/v1/setup/login`.
+
+    Errors are JSON `{"error": "<message>"}`.
+  license:
+    name: AGPL-3.0-only
+    url: https://www.gnu.org/licenses/agpl-3.0.html
+servers:
+  - url: http://localhost:2027
+    description: Local development (`make dev-backend`)
+tags:
+  - name: Users
+    description: The signed-in user.
+  - name: Sign-in
+    description: Web app sign-in with Google, GitHub or a custom OpenID Connect provider.
+  - name: Setup
+    description: Root-only server settings.
+  - name: Static
+    description: Static assets.
+security:
+  - session: []
+
+paths:
+  /api/v1/users/me:
+    get:
+      tags: [Users]
+      operationId: getCurrentUser
+      summary: Get the signed-in user
+      responses:
+        "200":
+          description: The signed-in user.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [user]
+                properties:
+                  user:
+                    $ref: "#/components/schemas/User"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/v1/setup/login:
+    post:
+      tags: [Setup]
+      operationId: rootLogin
+      summary: Sign in as root
+      description: |
+        Exchanges the root access token for the `topupsh_tracker_root`
+        session cookie, which covers the root-only routes. Limited to 10
+        attempts per client IP per minute.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token]
+              properties:
+                token:
+                  type: string
+                  description: The root access token.
+      responses:
+        "204":
+          description: Signed in; sets the `topupsh_tracker_root` cookie.
+          headers:
+            Set-Cookie:
+              schema:
+                type: string
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/ServerError"
+
+  /api/v1/setup/logout:
+    post:
+      tags: [Setup]
+      operationId: rootLogout
+      summary: Sign out as root
+      security: []
+      responses:
+        "204":
+          description: Signed out; clears the `topupsh_tracker_root` cookie.
+
+  /api/v1/setup/settings:
+    get:
+      tags: [Setup]
+      operationId: getSettings
+      summary: Get the settings
+      description: Secrets are always empty; `secretsSet` says which are stored.
+      security:
+        - root: []
+      responses:
+        "200":
+          description: The settings.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SettingsResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    put:
+      tags: [Setup]
+      operationId: updateSettings
+      summary: Validate and save the settings
+      description: An empty secret keeps the stored value.
+      security:
+        - root: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [settings]
+              properties:
+                settings:
+                  $ref: "#/components/schemas/Settings"
+      responses:
+        "200":
+          description: The saved settings.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SettingsResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/ServerError"
+
+  /auth/config:
+    get:
+      tags: [Sign-in]
+      operationId: getAuthConfig
+      summary: List the sign-in providers
+      security: []
+      responses:
+        "200":
+          description: The enabled sign-in providers.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [providers]
+                properties:
+                  providers:
+                    type: array
+                    items:
+                      type: object
+                      required: [id, name, icon]
+                      properties:
+                        id:
+                          type: string
+                        name:
+                          type: string
+                        icon:
+                          type: string
+
+  /auth/{provider}/login:
+    get:
+      tags: [Sign-in]
+      operationId: startLogin
+      summary: Start signing in with a provider
+      description: Redirects the browser to the provider's consent screen.
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/Provider"
+        - name: redirect_url
+          in: query
+          description: Where in the app to land after signing in.
+          schema:
+            type: string
+      responses:
+        "302":
+          description: Redirect to the provider.
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/ServerError"
+
+  /auth/{provider}/callback:
+    get:
+      tags: [Sign-in]
+      operationId: completeLogin
+      summary: Finish signing in
+      description: |
+        The provider redirects here. On success it sets the
+        `topupsh_tracker_session` cookie and redirects into the app; on
+        failure it redirects to `/login?error=<code>`.
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/Provider"
+        - name: code
+          in: query
+          schema:
+            type: string
+        - name: state
+          in: query
+          schema:
+            type: string
+      responses:
+        "302":
+          description: Redirect into the app or to the login page.
+
+  /auth/logout:
+    post:
+      tags: [Sign-in]
+      operationId: logout
+      summary: Sign out
+      security: []
+      responses:
+        "204":
+          description: Signed out; clears the `topupsh_tracker_session` cookie.
+
+  /favicon.ico:
+    get:
+      tags: [Static]
+      operationId: getFavicon
+      summary: The app icon
+      security: []
+      responses:
+        "200":
+          description: The icon.
+          content:
+            image/x-icon:
+              schema:
+                type: string
+                format: binary
+
+components:
+  securitySchemes:
+    session:
+      type: apiKey
+      in: cookie
+      name: topupsh_tracker_session
+      description: The web app's session, set by `/auth/{provider}/callback`.
+    root:
+      type: apiKey
+      in: cookie
+      name: topupsh_tracker_root
+      description: The root session, set by `POST /api/v1/setup/login`.
+
+  parameters:
+    Provider:
+      name: provider
+      in: path
+      required: true
+      description: A sign-in provider ID from `/auth/config`, e.g. `google`.
+      schema:
+        type: string
+
+  responses:
+    BadRequest:
+      description: The request is invalid.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    Unauthorized:
+      description: Missing or invalid credentials.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    NotFound:
+      description: Not found.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    TooManyRequests:
+      description: Rate limit exceeded.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    ServerError:
+      description: Internal error.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+
+    User:
+      type: object
+      required: [id, email, name, picture, provider, createdAt]
+      properties:
+        id:
+          type: string
+        email:
+          type: string
+        name:
+          type: string
+        picture:
+          type: string
+        provider:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+
+    Settings:
+      type: object
+      description: Secrets are write-only; they are empty in responses.
+      properties:
+        domain:
+          type: object
+          properties:
+            appUrl:
+              type: string
+            allowedOrigins:
+              type: array
+              items:
+                type: string
+        tls:
+          type: object
+          properties:
+            enabled:
+              type: boolean
+            port:
+              type: integer
+            email:
+              type: string
+        database:
+          type: object
+          properties:
+            driver:
+              type: string
+              enum: [sqlite, postgres]
+            sqlite:
+              type: object
+              properties:
+                dsn:
+                  type: string
+            postgres:
+              type: object
+              properties:
+                dsn:
+                  type: string
+                  writeOnly: true
+        auth:
+          type: object
+          properties:
+            google:
+              $ref: "#/components/schemas/OAuthClientSettings"
+            github:
+              $ref: "#/components/schemas/OAuthClientSettings"
+            providers:
+              type: array
+              items:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  name:
+                    type: string
+                  icon:
+                    type: string
+                  clientId:
+                    type: string
+                  clientSecret:
+                    type: string
+                    writeOnly: true
+                  authUrl:
+                    type: string
+
+    OAuthClientSettings:
+      type: object
+      properties:
+        clientId:
+          type: string
+        clientSecret:
+          type: string
+          writeOnly: true
+
+    SettingsResponse:
+      type: object
+      required: [settings, secretsSet, restartRequired]
+      properties:
+        settings:
+          $ref: "#/components/schemas/Settings"
+        secretsSet:
+          type: object
+          description: Which secrets have a stored value.
+          properties:
+            postgresDsn:
+              type: boolean
+            googleClientSecret:
+              type: boolean
+            githubClientSecret:
+              type: boolean
+            providerClientSecrets:
+              type: object
+              additionalProperties:
+                type: boolean
+        restartRequired:
+          type: boolean

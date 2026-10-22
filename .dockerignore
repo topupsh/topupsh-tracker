@@ -1,0 +1,18 @@
+# Copyright 2026 Contextual, Inc.
+# This notice may not be modified or removed.
+# SPDX-License-Identifier: AGPL-3.0-only
+
+# Keep secrets and local data out of the build context.
+**/.env
+**/*.db
+**/settings.json
+.git
+.claude
+.mcp.json
+bin
+coverage.out
+**/coverage
+frontend/node_modules
+frontend/dist
+backend/cmd/server/public/*
+!backend/cmd/server/public/.gitkeep

@@ -1,0 +1,56 @@
+# Copyright 2026 Contextual, Inc.
+# This notice may not be modified or removed.
+# SPDX-License-Identifier: AGPL-3.0-only
+
+# Values here (and the environment) are defaults. Once root saves settings on
+# the /setup page, the settings file overrides the app URL, tls, database and
+# auth provider values below.
+app:
+  port: ${TOPUPSH_PORT:2027}
+  # Public URL of the app, e.g. https://tracker.topup.sh. Its host is the
+  # only one the app answers on (besides localhost); OAuth callbacks are
+  # <baseUrl>/auth/<provider>/callback. In local development point it
+  # at the Vite dev server (http://localhost:5173).
+  baseUrl: ${TOPUPSH_BASE_URL:http://localhost:2027}
+  basePath: ${TOPUPSH_BASE_PATH:}
+  cookieSecure: ${TOPUPSH_COOKIE_SECURE:false}
+  settingsFile: ${TOPUPSH_SETTINGS_FILE:./_storage/settings.json}
+  # Comma-separated proxy IPs or CIDR ranges in front of the app, e.g.
+  # 10.0.0.0/8. Requests from them count as coming from the client IP in
+  # proxyHeader (the rightmost address that is not a trusted proxy): rate
+  # limits are per client IP.
+  trustedProxies: ${TOPUPSH_TRUSTED_PROXIES:}
+  proxyHeader: ${TOPUPSH_PROXY_HEADER:X-Forwarded-For}
+# HTTPS terminated by the server with Let's Encrypt certificates, obtained
+# and renewed automatically over TLS-ALPN-01 (Let's Encrypt must reach the
+# HTTPS port as 443).
+tls:
+  enabled: ${TOPUPSH_TLS_ENABLED:false}
+  port: ${TOPUPSH_TLS_PORT:443}
+  email: ${TOPUPSH_TLS_EMAIL:}
+auth:
+  jwtSecret: ${TOPUPSH_AUTH_JWT_SECRET}
+  # Unlocks /setup. Generated and logged at startup when empty.
+  rootAccessToken: ${TOPUPSH_AUTH_ROOT_ACCESS_TOKEN:}
+  google:
+    clientId: ${TOPUPSH_AUTH_GOOGLE_CLIENT_ID}
+    clientSecret: ${TOPUPSH_AUTH_GOOGLE_CLIENT_SECRET}
+  github:
+    clientId: ${TOPUPSH_AUTH_GITHUB_CLIENT_ID}
+    clientSecret: ${TOPUPSH_AUTH_GITHUB_CLIENT_SECRET}
+# PostgreSQL is used when enabled; otherwise SQLite.
+sqlite:
+  enabled: ${TOPUPSH_SQLITE_ENABLED:true}
+  dsn: ${TOPUPSH_SQLITE_DSN:./_storage/topupsh-tracker.db?_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)}
+  maxIdleConns: 10
+  maxOpenConns: 100
+  maxConnLifetime: 1h
+postgres:
+  enabled: ${TOPUPSH_POSTGRES_ENABLED:false}
+  # postgres://user:password@host:5432/topupsh_tracker?sslmode=disable
+  dsn: ${TOPUPSH_POSTGRES_DSN:}
+  maxIdleConns: 10
+  maxOpenConns: 100
+  maxConnLifetime: 1h
+idgen:
+  node: ${TOPUPSH_MONOFLAKE_NODE:0}
