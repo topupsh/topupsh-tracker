@@ -7,8 +7,8 @@ package entity
 import "time"
 
 // DefaultOrgMonthlyLimit is the monthly org limit of an org the admin has
-// set none for.
-const DefaultOrgMonthlyLimit int64 = 1000
+// set none for: nothing can be spent until an admin sets a limit.
+const DefaultOrgMonthlyLimit int64 = 0
 
 // Bucket kinds.
 const (

@@ -54,12 +54,13 @@ func TestServiceAPIKey_HashIsUnique(t *testing.T) {
 	assert.Error(t, db.Create(&ServiceAPIKey{ID: 2, ServiceID: 1, Prefix: "tpk_a", KeyHash: "h"}).Error)
 }
 
-func TestOrgLimit_UserLimitNullIsUncapped(t *testing.T) {
+func TestOrgLimit_Defaults(t *testing.T) {
 	db := newDB(t)
-	require.NoError(t, db.Create(&OrgLimit{ID: 1, ServiceID: 1, OrgID: "o", MonthlyLimit: 1000}).Error)
+	require.NoError(t, db.Create(&OrgLimit{ID: 1, ServiceID: 1, OrgID: "o"}).Error)
 	var got OrgLimit
 	require.NoError(t, db.First(&got, 1).Error)
-	assert.Nil(t, got.UserLimit)
+	assert.Equal(t, int64(0), got.MonthlyLimit)
+	assert.Nil(t, got.UserLimit, "null user limit is uncapped")
 	assert.Error(t, db.Create(&OrgLimit{ID: 2, ServiceID: 1, OrgID: "o", MonthlyLimit: 5}).Error, "one row per service and org")
 	assert.NoError(t, db.Create(&OrgLimit{ID: 3, ServiceID: 2, OrgID: "o", MonthlyLimit: 5}).Error)
 }
