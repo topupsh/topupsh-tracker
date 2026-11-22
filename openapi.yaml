@@ -12,7 +12,9 @@ info:
 
     Authenticate API calls from the web app with the
     `topupsh_tracker_session` cookie. Root-only setup routes take the
-    `topupsh_tracker_root` cookie set by `POST /api/v1/setup/login`.
+    `topupsh_tracker_root` cookie set by `POST /api/v1/setup/login`; the
+    same root session manages services' API keys. Services call the API
+    with their own key in `Authorization: Bearer <key>`.
 
     Errors are JSON `{"error": "<message>"}`.
   license:
@@ -28,6 +30,8 @@ tags:
     description: Web app sign-in with Google, GitHub or a custom OpenID Connect provider.
   - name: Setup
     description: Root-only server settings.
+  - name: Services
+    description: Root-only management of the API keys services call the API with.
   - name: Static
     description: Static assets.
 security:
@@ -148,6 +152,73 @@ paths:
         "500":
           $ref: "#/components/responses/ServerError"
 
+  /api/v1/services/{service}/keys:
+    post:
+      tags: [Services]
+      operationId: createServiceApiKey
+      summary: Create a service API key
+      description: |
+        Issues a new API key for the service, creating the service
+        (with credit limiting disabled) when it is new. The key is in the
+        response only this once; only its hash is stored. The service's
+        other keys keep working: rotate a key by creating a new one and
+        revoking the old one once every caller has switched.
+      security:
+        - root: []
+      parameters:
+        - $ref: "#/components/parameters/Service"
+      responses:
+        "201":
+          description: The new key.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [apiKey, key]
+                properties:
+                  apiKey:
+                    $ref: "#/components/schemas/ServiceApiKey"
+                  key:
+                    type: string
+                    description: The key itself, shown only once.
+                    example: tpk_3q2-7wE...
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/ServerError"
+
+  /api/v1/services/{service}/keys/{id}:
+    delete:
+      tags: [Services]
+      operationId: revokeServiceApiKey
+      summary: Revoke a service API key
+      description: |
+        The key stops authenticating at once. Revoking a revoked key
+        succeeds.
+      security:
+        - root: []
+      parameters:
+        - $ref: "#/components/parameters/Service"
+        - name: id
+          in: path
+          required: true
+          description: The key ID from `apiKey.id`.
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Revoked.
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/ServerError"
+
   /auth/config:
     get:
       tags: [Sign-in]
@@ -259,6 +330,13 @@ components:
       in: cookie
       name: topupsh_tracker_root
       description: The root session, set by `POST /api/v1/setup/login`.
+    serviceKey:
+      type: http
+      scheme: bearer
+      description: |
+        A service's API key from `POST /api/v1/services/{service}/keys`.
+        It identifies the service, so a service only reaches its own
+        credits.
 
   parameters:
     Provider:
@@ -268,6 +346,17 @@ components:
       description: A sign-in provider ID from `/auth/config`, e.g. `google`.
       schema:
         type: string
+
+    Service:
+      name: service
+      in: path
+      required: true
+      description: |
+        The service name: 1 to 64 lowercase letters, digits or dashes,
+        starting with a letter or digit, e.g. `mesher`.
+      schema:
+        type: string
+        pattern: "^[a-z0-9][a-z0-9-]{0,63}$"
 
   responses:
     BadRequest:
@@ -323,6 +412,21 @@ components:
           type: string
         provider:
           type: string
+        createdAt:
+          type: string
+          format: date-time
+
+    ServiceApiKey:
+      type: object
+      required: [id, service, prefix, createdAt]
+      properties:
+        id:
+          type: string
+        service:
+          type: string
+        prefix:
+          type: string
+          description: The start of the key, to tell keys apart.
         createdAt:
           type: string
           format: date-time

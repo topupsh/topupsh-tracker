@@ -20,6 +20,7 @@ import (
 
 	adminctrl "github.com/topupsh/topupsh-tracker/backend/internal/controller/admin"
 	authctrl "github.com/topupsh/topupsh-tracker/backend/internal/controller/auth"
+	servicekeyctrl "github.com/topupsh/topupsh-tracker/backend/internal/controller/servicekey"
 	setupctrl "github.com/topupsh/topupsh-tracker/backend/internal/controller/setup"
 	"github.com/topupsh/topupsh-tracker/backend/internal/data/entity"
 	"github.com/topupsh/topupsh-tracker/backend/internal/handler/api"
@@ -188,11 +189,15 @@ func New(cfg Config, web fs.FS) (*App, error) {
 	f := fiber.New(fiberConfig(cfg.App))
 	f.Use(recover.New())
 	api.New(api.Params{
-		Router:         f,
-		Hosts:          hostRouter(h),
-		Auth:           auth,
-		Setup:          setup,
-		Admin:          admin,
+		Router: f,
+		Hosts:  hostRouter(h),
+		Auth:   auth,
+		Setup:  setup,
+		Admin:  admin,
+		ServiceKeys: servicekeyctrl.New(servicekeyctrl.Params{
+			Services: repository.NewServiceRepository(db),
+			IDGen:    ids,
+		}),
 		AllowedOrigins: setup.AllowedOrigins,
 		BasePath:       basePath,
 		// A session cookie for an https app must never travel over plain

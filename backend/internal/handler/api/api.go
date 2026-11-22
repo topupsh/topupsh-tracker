@@ -17,6 +17,7 @@ import (
 
 	adminctrl "github.com/topupsh/topupsh-tracker/backend/internal/controller/admin"
 	authctrl "github.com/topupsh/topupsh-tracker/backend/internal/controller/auth"
+	servicekeyctrl "github.com/topupsh/topupsh-tracker/backend/internal/controller/servicekey"
 	setupctrl "github.com/topupsh/topupsh-tracker/backend/internal/controller/setup"
 	mapper "github.com/topupsh/topupsh-tracker/backend/internal/mapper/api"
 )
@@ -48,6 +49,8 @@ type Params struct {
 	Auth  authctrl.Controller
 	Setup setupctrl.Controller
 	Admin adminctrl.Controller
+	// ServiceKeys issues and checks service API keys.
+	ServiceKeys servicekeyctrl.Controller
 	// AllowedOrigins returns the other web origins that may call the API
 	// from a browser. It may be nil.
 	AllowedOrigins func() []string
@@ -67,6 +70,7 @@ func New(p Params) {
 	}
 	user := &User{controller: p.Auth}
 	admin := &Admin{controller: p.Admin}
+	serviceKey := &ServiceKey{controller: p.ServiceKeys}
 	setup := &Setup{controller: p.Setup, basePath: basePath, cookieSecure: p.CookieSecure}
 
 	if p.Hosts != nil {
@@ -94,6 +98,8 @@ func New(p Params) {
 	root := AuthenticateRoot(p.Setup)
 	r.Get("/setup/settings", root, setup.Get)
 	r.Put("/setup/settings", root, setup.Update)
+	r.Post("/services/:service/keys", root, serviceKey.Create)
+	r.Delete("/services/:service/keys/:id", root, serviceKey.Delete)
 
 	a := p.Router.Group(AdminPrefix, root)
 	a.Get("/stats", admin.GetStats)
