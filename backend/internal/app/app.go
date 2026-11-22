@@ -217,6 +217,7 @@ func New(cfg Config, web fs.FS) (*App, error) {
 			Balances: repository.NewBalanceRepository(db),
 			Services: services,
 			Token:    tokens,
+			PageURL:  balancePageURL(cfg.App.BaseURL),
 		}),
 		AllowedOrigins: setup.AllowedOrigins,
 		BasePath:       basePath,
@@ -317,4 +318,13 @@ func providers(cfg Config) []oauth.Provider {
 		}))
 	}
 	return out
+}
+
+// balancePageURL is the user balance page under the app's public URL, or
+// empty without one.
+func balancePageURL(baseURL string) string {
+	if baseURL == "" {
+		return ""
+	}
+	return strings.TrimRight(baseURL, "/") + "/balance"
 }

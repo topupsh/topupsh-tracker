@@ -19,7 +19,7 @@ import { usePlatformStore } from '../src/stores/platformStore'
 
 describe('routes', () => {
   it('only /login, /setup and /admin are public and every view is lazy', () => {
-    expect(routes.filter((r) => r.meta?.public).map((r) => r.path)).toEqual(['/login', '/setup', '/admin'])
+    expect(routes.filter((r) => r.meta?.public).map((r) => r.path)).toEqual(['/login', '/setup', '/admin', '/balance'])
     for (const r of routes.filter((r) => r.component)) {
       expect(typeof r.component).toBe('function')
     }

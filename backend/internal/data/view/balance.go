@@ -80,5 +80,7 @@ type (
 	ViewToken struct {
 		Token     string `json:"token"`
 		ExpiresAt string `json:"expiresAt"`
+		// URL opens the user's balance page with the token.
+		URL string `json:"url,omitempty"`
 	}
 )

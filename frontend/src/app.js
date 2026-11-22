@@ -34,6 +34,14 @@ export const routes = [
     meta: { public: true, title: 'Admin' },
   },
   {
+    // A service's user, signed in by the view token the service links them
+    // with (#token=...): their own credits, read-only.
+    path: '/balance',
+    name: 'balance',
+    component: () => import('./views/BalanceView.vue'),
+    meta: { public: true, title: 'Your credits' },
+  },
+  {
     // Signed-in users land here.
     path: '/',
     name: 'home',

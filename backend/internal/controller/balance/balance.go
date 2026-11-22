@@ -13,6 +13,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/url"
 	"time"
 
 	"github.com/topupsh/topupsh-tracker/backend/internal/data/entity"
@@ -75,13 +76,18 @@ type (
 		Balances repository.BalanceRepository
 		Services repository.ServiceRepository
 		Token    token.Service
-		Now      func() time.Time
+		// PageURL is the user balance page, e.g.
+		// https://topup.sh/balance; a view token's URL is PageURL with
+		// the token in the fragment. Empty leaves the URL out.
+		PageURL string
+		Now     func() time.Time
 	}
 
 	controller struct {
 		balances repository.BalanceRepository
 		services repository.ServiceRepository
 		tokens   token.Service
+		pageURL  string
 		now      func() time.Time
 	}
 
@@ -95,7 +101,7 @@ type (
 
 // New returns the balance controller.
 func New(p Params) Controller {
-	c := &controller{balances: p.Balances, services: p.Services, tokens: p.Token, now: p.Now}
+	c := &controller{balances: p.Balances, services: p.Services, tokens: p.Token, pageURL: p.PageURL, now: p.Now}
 	if c.now == nil {
 		c.now = time.Now
 	}
@@ -204,7 +210,12 @@ func (c *controller) CreateViewToken(_ context.Context, rq *entity.CreateViewTok
 	if err != nil {
 		return nil, fmt.Errorf("create view token: %w", err)
 	}
-	return &entity.CreateViewTokenResponse{Token: tok, ExpiresAt: exp}, nil
+	rs := &entity.CreateViewTokenResponse{Token: tok, ExpiresAt: exp}
+	if c.pageURL != "" {
+		// The fragment keeps the token out of server and proxy logs.
+		rs.URL = c.pageURL + "#token=" + url.QueryEscape(tok)
+	}
+	return rs, nil
 }
 
 func (c *controller) AuthenticateViewer(_ context.Context, rq *entity.AuthenticateViewerRequest) (*entity.AuthenticateViewerResponse, error) {

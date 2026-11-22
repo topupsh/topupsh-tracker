@@ -300,6 +300,15 @@ func TestCreateViewToken(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, &entity.CreateViewTokenResponse{Token: "tok", ExpiresAt: exp}, rs)
 	})
+	t.Run("with a page url", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		tokens := tokenmocks.NewMockService(ctrl)
+		c := New(Params{Token: tokens, PageURL: "https://topup.sh/balance", Now: func() time.Time { return _now }})
+		tokens.EXPECT().CreateViewToken(gomock.Any()).Return("a.b+c", exp, nil)
+		rs, err := c.CreateViewToken(ctx, &entity.CreateViewTokenRequest{ServiceID: 7, OrgID: "o1", UserID: "u1"})
+		require.NoError(t, err)
+		assert.Equal(t, "https://topup.sh/balance#token=a.b%2Bc", rs.URL)
+	})
 	t.Run("invalid", func(t *testing.T) {
 		c, _ := newController(t)
 		_, err := c.CreateViewToken(ctx, &entity.CreateViewTokenRequest{ServiceID: 7, UserID: "u1"})

@@ -143,4 +143,9 @@ func TestFromCreateViewTokenResponseEntityToHTTPResponse(t *testing.T) {
 		Token: "tok", ExpiresAt: time.Date(2026, 11, 21, 14, 0, 0, 0, time.FixedZone("x", 3600)),
 	})
 	assert.JSONEq(t, `{"token":"tok","expiresAt":"2026-11-21T13:00:00Z"}`, string(got))
+
+	got = FromCreateViewTokenResponseEntityToHTTPResponse(&entity.CreateViewTokenResponse{
+		Token: "tok", ExpiresAt: time.Date(2026, 11, 21, 13, 0, 0, 0, time.UTC), URL: "https://topup.sh/balance#token=tok",
+	})
+	assert.JSONEq(t, `{"token":"tok","expiresAt":"2026-11-21T13:00:00Z","url":"https://topup.sh/balance#token=tok"}`, string(got))
 }
