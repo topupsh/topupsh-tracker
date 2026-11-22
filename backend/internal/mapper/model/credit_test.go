@@ -41,7 +41,7 @@ func TestOrgLimitMappers(t *testing.T) {
 func TestCreditBucketMappers(t *testing.T) {
 	now := time.Now()
 	later := now.Add(time.Hour)
-	m := model.CreditBucket{ID: 4, ServiceID: 1, OrgID: "o", UserID: "u", Kind: "grant", Amount: 10, Remaining: 7, CreatedAt: now, ExpiresAt: later}
+	m := model.CreditBucket{ID: 4, ServiceID: 1, OrgID: "o", UserID: "u", BucketType: model.BucketTypeGrant, Amount: 10, Remaining: 7, CreatedAt: now, ExpiresAt: later}
 	e := entity.CreditBucket{ID: 4, ServiceID: 1, OrgID: "o", UserID: "u", Kind: entity.BucketKindGrant, Amount: 10, Remaining: 7, CreatedAt: now, ExpiresAt: later}
 	assert.Equal(t, e, FromCreditBucketModelToCreditBucketEntity(m))
 	assert.Equal(t, m, FromCreditBucketEntityToCreditBucketModel(e))
@@ -49,18 +49,57 @@ func TestCreditBucketMappers(t *testing.T) {
 
 func TestChargeMappers(t *testing.T) {
 	now := time.Now()
-	m := model.Charge{ID: 5, ServiceID: 1, RequestID: "r", OrgID: "o", UserID: "u", Credits: 1, Operation: "tool", Refusal: "user_limit", Balance: 3, OrgRemaining: 4, CreatedAt: now, RefundedAt: &now, RefundedCredits: 1}
-	e := entity.Charge{ID: 5, ServiceID: 1, RequestID: "r", OrgID: "o", UserID: "u", Credits: 1, Operation: "tool", Refusal: "user_limit", Balance: 3, OrgRemaining: 4, CreatedAt: now, RefundedAt: &now, RefundedCredits: 1}
-	assert.Equal(t, e, FromChargeModelToChargeEntity(m))
-	assert.Equal(t, m, FromChargeEntityToChargeModel(e))
+	r, x := "r", "x"
+	spend := model.LedgerEntry{ID: 5, ServiceID: 1, RequestID: &x, OrgID: "o", UserID: "u", EntryType: model.EntryTypeSpend, Amount: -2, BalanceAfter: 3, OrgRemaining: 4, Operation: "tool", CreatedAt: now}
+	assert.Equal(t, entity.Charge{ID: 5, ServiceID: 1, RequestID: "x", OrgID: "o", UserID: "u", Credits: 2, Operation: "tool", Balance: 3, OrgRemaining: 4, CreatedAt: now},
+		FromLedgerEntryModelToChargeEntity(spend))
+	refusal := model.LedgerEntry{ID: 6, ServiceID: 1, RequestID: &x, EntryType: model.EntryTypeRefusal, RefusalReason: model.RefusalReasonUserLimit, BalanceAfter: 1}
+	assert.Equal(t, entity.Charge{ID: 6, ServiceID: 1, RequestID: "x", Refusal: entity.RefusalUserLimit, Balance: 1}, FromLedgerEntryModelToChargeEntity(refusal))
+	assert.Equal(t, entity.RefusalOrgLimit, FromLedgerEntryModelToChargeEntity(model.LedgerEntry{RefusalReason: model.RefusalReasonOrgLimit}).Refusal)
+
+	refund := model.LedgerEntry{ID: 7, ServiceID: 1, RequestID: &r, RefundOf: &spend.ID, OrgID: "o", UserID: "u", EntryType: model.EntryTypeRefund, Amount: 2, BalanceAfter: 5, OrgRemaining: 6, Operation: "tool", CreatedAt: now}
+	assert.Equal(t, entity.Refund{ID: 7, ServiceID: 1, RequestID: "r", ChargeRequestID: "x", OrgID: "o", UserID: "u", Credits: 2, Operation: "tool", Balance: 5, OrgRemaining: 6, CreatedAt: now},
+		FromLedgerEntryModelToRefundEntity(refund, "x"))
 }
 
 func TestLedgerEntryMappers(t *testing.T) {
 	now := time.Now()
-	m := model.LedgerEntry{ID: 6, ServiceID: 1, OrgID: "o", UserID: "u", Kind: "spend", Amount: -1, BalanceAfter: 9, Actor: "mesher", Operation: "tool", CreatedAt: now}
-	e := entity.LedgerEntry{ID: 6, ServiceID: 1, OrgID: "o", UserID: "u", Kind: entity.LedgerKindSpend, Amount: -1, BalanceAfter: 9, Actor: "mesher", Operation: "tool", CreatedAt: now}
+	r := "r"
+	m := model.LedgerEntry{ID: 6, ServiceID: 1, RequestID: &r, OrgID: "o", UserID: "u", EntryType: model.EntryTypeSpend, Amount: -1, BalanceAfter: 9, ActorType: model.ActorTypeService, Operation: "tool", CreatedAt: now}
+	e := entity.LedgerEntry{ID: 6, ServiceID: 1, RequestID: "r", OrgID: "o", UserID: "u", Kind: entity.LedgerKindSpend, Amount: -1, BalanceAfter: 9, Actor: entity.ActorKindService, Operation: "tool", CreatedAt: now}
 	assert.Equal(t, e, FromLedgerEntryModelToLedgerEntryEntity(m))
+	assert.Equal(t, m, FromLedgerEntryEntityToLedgerEntryModel(e))
+	m.RequestID, e.RequestID = nil, ""
+	assert.Equal(t, e, FromLedgerEntryModelToLedgerEntryEntity(m), "a system entry has no request")
 	assert.Equal(t, m, FromLedgerEntryEntityToLedgerEntryModel(e))
 	assert.Equal(t, []entity.LedgerEntry{e}, FromLedgerEntryModelsToLedgerEntryEntities([]model.LedgerEntry{m}))
 	assert.Empty(t, FromLedgerEntryModelsToLedgerEntryEntities(nil))
+}
+
+func TestTypeMappers(t *testing.T) {
+	for typ, kind := range map[model.BucketType]entity.BucketKind{model.BucketTypeMonthly: "monthly", model.BucketTypeGrant: "grant"} {
+		assert.Equal(t, kind, FromBucketTypeModelToBucketKindEntity(typ))
+		assert.Equal(t, typ, FromBucketKindEntityToBucketTypeModel(kind))
+	}
+	assert.Empty(t, FromBucketTypeModelToBucketKindEntity(0))
+	assert.Zero(t, FromBucketKindEntityToBucketTypeModel("nope"))
+
+	for typ, kind := range map[model.EntryType]entity.LedgerKind{
+		model.EntryTypeSpend: "spend", model.EntryTypeRefund: "refund", model.EntryTypeGrant: "grant",
+		model.EntryTypeRenewal: "renewal", model.EntryTypeLimit: "limit", model.EntryTypeExpiry: "expiry",
+	} {
+		assert.Equal(t, kind, FromEntryTypeModelToLedgerKindEntity(typ))
+		assert.Equal(t, typ, FromLedgerKindEntityToEntryTypeModel(kind))
+	}
+	assert.Empty(t, FromEntryTypeModelToLedgerKindEntity(0))
+	assert.Zero(t, FromLedgerKindEntityToEntryTypeModel("nope"))
+
+	for typ, kind := range map[model.ActorType]entity.ActorKind{
+		model.ActorTypeService: "service", model.ActorTypeAdmin: "admin", model.ActorTypeScheduler: "scheduler",
+	} {
+		assert.Equal(t, kind, FromActorTypeModelToActorKindEntity(typ))
+		assert.Equal(t, typ, FromActorKindEntityToActorTypeModel(kind))
+	}
+	assert.Empty(t, FromActorTypeModelToActorKindEntity(0))
+	assert.Zero(t, FromActorKindEntityToActorTypeModel("nope"))
 }

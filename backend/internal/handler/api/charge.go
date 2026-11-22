@@ -54,6 +54,7 @@ func (h *Charge) CreateRefund(c fiber.Ctx) error {
 func (h *Charge) sendError(c fiber.Ctx, err error, msg string) error {
 	switch {
 	case errors.Is(err, chargectrl.ErrInvalidRequestID),
+		errors.Is(err, chargectrl.ErrInvalidChargeRequestID),
 		errors.Is(err, chargectrl.ErrInvalidOrg),
 		errors.Is(err, chargectrl.ErrInvalidUser),
 		errors.Is(err, chargectrl.ErrInvalidCredits),

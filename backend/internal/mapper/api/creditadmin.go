@@ -148,13 +148,14 @@ func FromHTTPRequestToCreateGrantRequestEntity(c fiber.Ctx) *entity.CreateGrantR
 	if err := json.Unmarshal(c.Body(), &rq); err != nil || rq.Service == "" {
 		return nil
 	}
-	return &entity.CreateGrantRequest{ServiceName: rq.Service, OrgID: rq.Org, UserID: rq.User, Credits: rq.Credits}
+	return &entity.CreateGrantRequest{RequestID: rq.RequestID, ServiceName: rq.Service, OrgID: rq.Org, UserID: rq.User, Credits: rq.Credits}
 }
 
 // FromCreateGrantResponseEntityToHTTPResponse renders the new grant.
 func FromCreateGrantResponseEntityToHTTPResponse(rs *entity.CreateGrantResponse) []byte {
 	return marshal(view.Grant{
 		ID:           FromIDToBase62(rs.Bucket.ID),
+		RequestID:    rs.LedgerEntry.RequestID,
 		Service:      rs.Service.Name,
 		Org:          rs.Bucket.OrgID,
 		User:         rs.Bucket.UserID,

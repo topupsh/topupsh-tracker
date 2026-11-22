@@ -3,6 +3,7 @@ module github.com/topupsh/topupsh-tracker/backend
 go 1.27.2
 
 require (
+	github.com/cespare/xxhash/v2 v2.3.0
 	github.com/glebarez/sqlite v1.11.0
 	github.com/go-acme/lego/v4 v4.35.2
 	github.com/gofiber/fiber/v3 v3.6.1

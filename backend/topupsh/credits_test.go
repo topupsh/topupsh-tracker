@@ -84,12 +84,13 @@ func TestCharge(t *testing.T) {
 
 func TestRefund(t *testing.T) {
 	var got request
-	c := serve(t, &got, http.StatusOK, `{"requestId":"r1","limited":true,"credits":1,"refundedAt":"2026-11-22T01:02:03Z","balance":10}`)
+	c := serve(t, &got, http.StatusOK, `{"requestId":"f1","chargeRequestId":"r1","limited":true,"credits":1,"refundedAt":"2026-11-22T01:02:03Z","balance":10}`)
 	rs, err := c.Refund(context.Background(), "r1")
 	require.NoError(t, err)
-	assert.Equal(t, &Refund{RequestID: "r1", Limited: true, Credits: 1, RefundedAt: time.Date(2026, 11, 22, 1, 2, 3, 0, time.UTC), Balance: ptr(10)}, rs)
+	assert.Equal(t, &Refund{RequestID: "f1", ChargeRequestID: "r1", Limited: true, Credits: 1, RefundedAt: time.Date(2026, 11, 22, 1, 2, 3, 0, time.UTC), Balance: ptr(10)}, rs)
 	assert.Equal(t, "/api/v1/refunds", got.path)
-	assert.Equal(t, map[string]any{"requestId": "r1"}, got.body)
+	assert.Equal(t, "r1", got.body["chargeRequestId"])
+	assert.Len(t, got.body["requestId"], 26, "the refund gets a request id of its own")
 
 	_, err = unavailable(t).Refund(context.Background(), "r1")
 	assert.ErrorIs(t, err, ErrUnavailable)

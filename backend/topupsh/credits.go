@@ -54,8 +54,11 @@ type (
 
 	// Refund is a refunded charge.
 	Refund struct {
+		// RequestID is the refund's own request id.
 		RequestID string `json:"requestId"`
-		Limited   bool   `json:"limited"`
+		// ChargeRequestID is the request id of the refunded charge.
+		ChargeRequestID string `json:"chargeRequestId"`
+		Limited         bool   `json:"limited"`
 		// Credits is what was given back; credits of expired buckets are
 		// not.
 		Credits    int64     `json:"credits"`
@@ -150,7 +153,8 @@ type (
 	}
 )
 
-// NewRequestID returns a random request id.
+// NewRequestID returns a random request id of 26 characters; topup.sh
+// takes up to 32.
 func NewRequestID() string {
 	return rand.Text()
 }
@@ -169,13 +173,15 @@ func (c *Client) Charge(ctx context.Context, rq ChargeRequest) (*Charge, error) 
 	return &rs, nil
 }
 
-// Refund gives back the credits of the charge with requestID, e.g. after
-// the operation it paid for failed. Refunding twice refunds once.
-func (c *Client) Refund(ctx context.Context, requestID string) (*Refund, error) {
+// Refund gives back the credits of the charge with chargeRequestID, e.g.
+// after the operation it paid for failed. The refund gets a request id of
+// its own, which its retries reuse. Refunding twice refunds once.
+func (c *Client) Refund(ctx context.Context, chargeRequestID string) (*Refund, error) {
 	var rs Refund
 	body := struct {
-		RequestID string `json:"requestId"`
-	}{requestID}
+		RequestID       string `json:"requestId"`
+		ChargeRequestID string `json:"chargeRequestId"`
+	}{NewRequestID(), chargeRequestID}
 	if _, err := c.do(ctx, http.MethodPost, "/api/v1/refunds", nil, body, &rs); err != nil {
 		return nil, err
 	}

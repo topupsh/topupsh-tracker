@@ -117,11 +117,11 @@ func TestCharge_CreateRefund(t *testing.T) {
 	t.Run("refunded", func(t *testing.T) {
 		app, charges := newChargeApp(t)
 		at := time.Date(2026, 11, 21, 12, 0, 0, 0, time.UTC)
-		charges.EXPECT().CreateRefund(gomock.Any(), &entity.CreateRefundRequest{ServiceID: 7, RequestID: "r1"}).
-			Return(&entity.CreateRefundResponse{Limited: true, Balance: 9, Charge: entity.Charge{RequestID: "r1", RefundedCredits: 2, RefundedAt: &at}}, nil)
-		res, got := sendAsService(t, app, "/api/v1/refunds", "tpk_x", `{"requestId":"r1"}`)
+		charges.EXPECT().CreateRefund(gomock.Any(), &entity.CreateRefundRequest{ServiceID: 7, RequestID: "f1", ChargeRequestID: "r1"}).
+			Return(&entity.CreateRefundResponse{Limited: true, Refund: entity.Refund{RequestID: "f1", ChargeRequestID: "r1", Credits: 2, Balance: 9, CreatedAt: at}}, nil)
+		res, got := sendAsService(t, app, "/api/v1/refunds", "tpk_x", `{"requestId":"f1","chargeRequestId":"r1"}`)
 		assert.Equal(t, http.StatusOK, res.StatusCode)
-		assert.JSONEq(t, `{"requestId":"r1","limited":true,"credits":2,"refundedAt":"2026-11-21T12:00:00Z","balance":9}`, got)
+		assert.JSONEq(t, `{"requestId":"f1","chargeRequestId":"r1","limited":true,"credits":2,"refundedAt":"2026-11-21T12:00:00Z","balance":9}`, got)
 	})
 	t.Run("bad request", func(t *testing.T) {
 		app, _ := newChargeApp(t)
@@ -129,10 +129,12 @@ func TestCharge_CreateRefund(t *testing.T) {
 		assert.Equal(t, http.StatusBadRequest, res.StatusCode)
 	})
 	for err, status := range map[error]int{
-		chargectrl.ErrInvalidRequestID: http.StatusBadRequest,
-		chargectrl.ErrChargeNotFound:   http.StatusNotFound,
-		chargectrl.ErrNotCharged:       http.StatusConflict,
-		errBoom:                        http.StatusInternalServerError,
+		chargectrl.ErrInvalidRequestID:       http.StatusBadRequest,
+		chargectrl.ErrInvalidChargeRequestID: http.StatusBadRequest,
+		chargectrl.ErrChargeNotFound:         http.StatusNotFound,
+		chargectrl.ErrNotCharged:             http.StatusConflict,
+		chargectrl.ErrRequestConflict:        http.StatusConflict,
+		errBoom:                              http.StatusInternalServerError,
 	} {
 		t.Run(err.Error(), func(t *testing.T) {
 			app, charges := newChargeApp(t)

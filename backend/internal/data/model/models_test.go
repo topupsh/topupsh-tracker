@@ -25,14 +25,18 @@ func newDB(t *testing.T) *gorm.DB {
 
 func TestModels_Migrate(t *testing.T) {
 	db := newDB(t)
-	for _, table := range []string{"users", "services", "service_api_keys", "org_limits", "credit_buckets", "charges", "charge_spends", "ledger_entries"} {
+	for _, table := range []string{"users", "services", "service_api_keys", "external_id_mappings", "operation_mappings", "org_limits", "credit_buckets", "charge_spends", "ledger_entries"} {
 		assert.True(t, db.Migrator().HasTable(table), table)
 	}
-	for table, index := range map[string]string{
-		"charges":        "idx_charges_service_request",
-		"org_limits":     "idx_org_limits_service_org",
-		"credit_buckets": "idx_credit_buckets_fifo",
-		"ledger_entries": "idx_ledger_entries_subject",
+	for index, table := range map[string]string{
+		"idx_ledger_entries_service_request":       "ledger_entries",
+		"idx_ledger_entries_refund_of":             "ledger_entries",
+		"idx_org_limits_service_org":               "org_limits",
+		"idx_external_id_mappings_subject":         "external_id_mappings",
+		"idx_external_id_mappings_service_mapping": "external_id_mappings",
+		"idx_operation_mappings_service_mapping":   "operation_mappings",
+		"idx_credit_buckets_fifo":                  "credit_buckets",
+		"idx_ledger_entries_subject":               "ledger_entries",
 	} {
 		assert.True(t, db.Migrator().HasIndex(table, index), index)
 	}
@@ -67,21 +71,53 @@ func TestOrgLimit_Defaults(t *testing.T) {
 
 func TestCreditBucket_RemainingNeverNegative(t *testing.T) {
 	db := newDB(t)
-	b := CreditBucket{ID: 1, ServiceID: 1, OrgID: "o", UserID: "u", Kind: "monthly", Amount: 10, Remaining: 10, ExpiresAt: time.Now()}
+	b := CreditBucket{ID: 1, ServiceID: 1, OrgID: "o", UserID: "u", BucketType: BucketTypeMonthly, Amount: 10, Remaining: 10, ExpiresAt: time.Now()}
 	require.NoError(t, db.Create(&b).Error)
 	assert.Error(t, db.Model(&b).Update("remaining", -1).Error)
 }
 
-func TestCharge_RequestIDUniquePerService(t *testing.T) {
+func TestLedgerEntry_RequestIDUniquePerService(t *testing.T) {
 	db := newDB(t)
-	require.NoError(t, db.Create(&Charge{ID: 1, ServiceID: 1, RequestID: "r", OrgID: "o", UserID: "u", Credits: 1}).Error)
-	assert.Error(t, db.Create(&Charge{ID: 2, ServiceID: 1, RequestID: "r", OrgID: "o", UserID: "u", Credits: 1}).Error, "a retry never charges twice")
-	assert.NoError(t, db.Create(&Charge{ID: 3, ServiceID: 2, RequestID: "r", OrgID: "o", UserID: "u", Credits: 1}).Error)
+	r, r2 := "r", "r2"
+	spend := int64(1)
+	require.NoError(t, db.Create(&LedgerEntry{ID: 1, ServiceID: 1, RequestID: &r, EntryType: EntryTypeSpend, Amount: -1}).Error)
+	assert.Error(t, db.Create(&LedgerEntry{ID: 2, ServiceID: 1, RequestID: &r, EntryType: EntryTypeSpend, Amount: -1}).Error, "a retry never charges twice")
+	assert.NoError(t, db.Create(&LedgerEntry{ID: 3, ServiceID: 2, RequestID: &r, EntryType: EntryTypeSpend, Amount: -1}).Error, "another service's")
+	assert.NoError(t, db.Create(&LedgerEntry{ID: 4, ServiceID: 1, EntryType: EntryTypeRenewal, Amount: 5}).Error)
+	assert.NoError(t, db.Create(&LedgerEntry{ID: 5, ServiceID: 1, EntryType: EntryTypeRenewal, Amount: 5}).Error, "entries without a request")
+
+	assert.NoError(t, db.Create(&LedgerEntry{ID: 6, ServiceID: 1, RequestID: &r2, RefundOf: &spend, EntryType: EntryTypeRefund, Amount: 1}).Error, "a refund has its own request")
+	r3 := "r3"
+	assert.Error(t, db.Create(&LedgerEntry{ID: 7, ServiceID: 1, RequestID: &r3, RefundOf: &spend, EntryType: EntryTypeRefund, Amount: 1}).Error, "a spend is refunded once")
+}
+
+func TestExternalIDMapping(t *testing.T) {
+	db := newDB(t)
+	m := ExternalIDMapping{ID: 1, ServiceID: 1, OrgID: "o", MappingID: 10}
+	require.NoError(t, db.Create(&m).Error)
+	assert.NoError(t, db.Create(&ExternalIDMapping{ID: 2, ServiceID: 1, OrgID: "o", UserID: "u", MappingID: 11}).Error, "an org's user")
+	assert.Error(t, db.Create(&ExternalIDMapping{ID: 3, ServiceID: 1, OrgID: "o", MappingID: 12}).Error, "one row per org")
+	assert.Error(t, db.Create(&ExternalIDMapping{ID: 4, ServiceID: 1, OrgID: "p", MappingID: 10}).Error, "one row per service and mapping ID")
+	assert.NoError(t, db.Create(&ExternalIDMapping{ID: 5, ServiceID: 2, OrgID: "o", MappingID: 10}).Error, "another service's")
+
+	assert.ErrorIs(t, db.Model(&m).Update("org_id", "p").Error, ErrMappingImmutable)
+	assert.ErrorIs(t, db.Delete(&m).Error, ErrMappingImmutable)
+}
+
+func TestOperationMapping(t *testing.T) {
+	db := newDB(t)
+	m := OperationMapping{ID: 1, ServiceID: 1, Operation: "tool", MappingID: 10}
+	require.NoError(t, db.Create(&m).Error)
+	assert.Error(t, db.Create(&OperationMapping{ID: 2, ServiceID: 1, Operation: "other", MappingID: 10}).Error, "one row per service and mapping ID")
+	assert.NoError(t, db.Create(&OperationMapping{ID: 3, ServiceID: 2, Operation: "tool", MappingID: 10}).Error)
+
+	assert.ErrorIs(t, db.Model(&m).Update("operation", "x").Error, ErrMappingImmutable)
+	assert.ErrorIs(t, db.Delete(&m).Error, ErrMappingImmutable)
 }
 
 func TestLedgerEntry_AppendOnly(t *testing.T) {
 	db := newDB(t)
-	e := LedgerEntry{ID: 1, ServiceID: 1, OrgID: "o", UserID: "u", Kind: "spend", Amount: -1, BalanceAfter: 9, Actor: "mesher"}
+	e := LedgerEntry{ID: 1, ServiceID: 1, OrgID: "o", UserID: "u", EntryType: EntryTypeSpend, Amount: -1, BalanceAfter: 9, ActorType: ActorTypeService}
 	require.NoError(t, db.Create(&e).Error)
 
 	assert.ErrorIs(t, db.Model(&e).Update("amount", -2).Error, ErrLedgerAppendOnly)

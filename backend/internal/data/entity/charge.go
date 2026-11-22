@@ -27,18 +27,19 @@ type (
 		RenewsAt time.Time
 	}
 
-	// CreateRefundRequest asks to refund the charge of a request ID.
+	// CreateRefundRequest asks to refund the charge of ChargeRequestID;
+	// RequestID is the refund's own request.
 	CreateRefundRequest struct {
-		ServiceID int64
-		RequestID string
+		ServiceID       int64
+		RequestID       string
+		ChargeRequestID string
 	}
 
-	// CreateRefundResponse is the refunded charge and the user's balance.
+	// CreateRefundResponse is the refund.
 	CreateRefundResponse struct {
-		// Limited is false for an unknown request while the service's
+		// Limited is false for an unknown charge while the service's
 		// switch is off.
 		Limited bool
-		Charge  Charge
-		Balance int64
+		Refund  Refund
 	}
 )

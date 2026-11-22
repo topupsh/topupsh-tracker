@@ -35,6 +35,9 @@ type (
 
 	// CreateGrantRequest gives a user extra credits of a service.
 	CreateGrantRequest struct {
+		// RequestID makes the grant safe to retry; the controller makes one
+		// when it is empty.
+		RequestID   string
 		ServiceName string
 		OrgID       string
 		UserID      string

@@ -50,24 +50,27 @@ func TestCreateCharge(t *testing.T) {
 	ctx := context.Background()
 	t.Run("charged", func(t *testing.T) {
 		c, charges, _ := newController(t)
-		charges.EXPECT().Charge(ctx, model.Charge{
-			ID: 42, CreatedAt: _now, ServiceID: 7, RequestID: "r1", OrgID: "o1", UserID: "u1", Credits: 2, Operation: "tool",
-		}, gomock.Any()).DoAndReturn(func(_ context.Context, ch model.Charge, next func() int64) (repository.ChargeResult, error) {
+		r1 := "r1"
+		charges.EXPECT().Charge(ctx, model.LedgerEntry{
+			CreatedAt: _now, ServiceID: 7, RequestID: &r1, OrgID: "o1", UserID: "u1", Amount: -2, Operation: "tool",
+		}, gomock.Any()).DoAndReturn(func(_ context.Context, e model.LedgerEntry, next func() int64) (repository.ChargeResult, error) {
 			assert.Equal(t, int64(42), next(), "the repository gets the ID generator")
-			ch.Balance, ch.OrgRemaining = 8, 90
-			return repository.ChargeResult{Limited: true, Charge: ch}, nil
+			e.EntryType, e.BalanceAfter, e.OrgRemaining = model.EntryTypeSpend, 8, 90
+			return repository.ChargeResult{Limited: true, Entry: e}, nil
 		})
 		rs, err := c.CreateCharge(ctx, validCharge())
 		require.NoError(t, err)
 		assert.True(t, rs.Limited)
+		assert.Equal(t, int64(2), rs.Charge.Credits)
+		assert.Equal(t, "r1", rs.Charge.RequestID)
 		assert.Equal(t, int64(8), rs.Charge.Balance)
 		assert.Equal(t, int64(90), rs.Charge.OrgRemaining)
 		assert.Equal(t, _renews, rs.RenewsAt)
 	})
 	t.Run("replayed refusal renews after the original month", func(t *testing.T) {
 		c, charges, _ := newController(t)
-		charges.EXPECT().Charge(ctx, gomock.Any(), gomock.Any()).Return(repository.ChargeResult{Limited: true, Charge: model.Charge{
-			RequestID: "r1", Refusal: "user_limit", CreatedAt: time.Date(2026, 10, 31, 23, 0, 0, 0, time.UTC),
+		charges.EXPECT().Charge(ctx, gomock.Any(), gomock.Any()).Return(repository.ChargeResult{Limited: true, Entry: model.LedgerEntry{
+			EntryType: model.EntryTypeRefusal, RefusalReason: model.RefusalReasonUserLimit, CreatedAt: time.Date(2026, 10, 31, 23, 0, 0, 0, time.UTC),
 		}}, nil)
 		rs, err := c.CreateCharge(ctx, validCharge())
 		require.NoError(t, err)
@@ -85,7 +88,7 @@ func TestCreateCharge(t *testing.T) {
 	t.Run("invalid", func(t *testing.T) {
 		c, _, _ := newController(t)
 		for want, edit := range map[error]func(rq *entity.CreateChargeRequest){
-			ErrInvalidRequestID: func(rq *entity.CreateChargeRequest) { rq.RequestID = strings.Repeat("r", 129) },
+			ErrInvalidRequestID: func(rq *entity.CreateChargeRequest) { rq.RequestID = strings.Repeat("r", 33) },
 			ErrInvalidOrg:       func(rq *entity.CreateChargeRequest) { rq.OrgID = "" },
 			ErrInvalidUser:      func(rq *entity.CreateChargeRequest) { rq.UserID = strings.Repeat("u", 65) },
 			ErrInvalidCredits:   func(rq *entity.CreateChargeRequest) { rq.Credits = 0 },
@@ -113,38 +116,41 @@ func TestCreateCharge(t *testing.T) {
 
 func TestCreateRefund(t *testing.T) {
 	ctx := context.Background()
-	rq := &entity.CreateRefundRequest{ServiceID: 7, RequestID: "r1"}
+	rq := &entity.CreateRefundRequest{ServiceID: 7, RequestID: "f1", ChargeRequestID: "r1"}
 	t.Run("refunded", func(t *testing.T) {
 		c, charges, _ := newController(t)
-		charges.EXPECT().Refund(ctx, int64(7), "r1", _now, gomock.Any()).
-			Return(repository.RefundResult{Limited: true, Charge: model.Charge{RequestID: "r1", RefundedCredits: 2, RefundedAt: &_now}, Balance: 9}, nil)
+		f1 := "f1"
+		charges.EXPECT().Refund(ctx, int64(7), "f1", "r1", _now, gomock.Any()).
+			Return(repository.RefundResult{Limited: true, Refund: model.LedgerEntry{RequestID: &f1, EntryType: model.EntryTypeRefund, Amount: 2, BalanceAfter: 9, CreatedAt: _now}}, nil)
 		rs, err := c.CreateRefund(ctx, rq)
 		require.NoError(t, err)
 		assert.True(t, rs.Limited)
-		assert.Equal(t, int64(2), rs.Charge.RefundedCredits)
-		assert.Equal(t, int64(9), rs.Balance)
+		assert.Equal(t, entity.Refund{RequestID: "f1", ChargeRequestID: "r1", Credits: 2, Balance: 9, CreatedAt: _now}, rs.Refund)
 	})
 	t.Run("switched off", func(t *testing.T) {
 		c, charges, _ := newController(t)
-		charges.EXPECT().Refund(ctx, int64(7), "r1", _now, gomock.Any()).Return(repository.RefundResult{}, nil)
+		charges.EXPECT().Refund(ctx, int64(7), "f1", "r1", _now, gomock.Any()).Return(repository.RefundResult{}, nil)
 		rs, err := c.CreateRefund(ctx, rq)
 		require.NoError(t, err)
 		assert.False(t, rs.Limited)
-		assert.Equal(t, "r1", rs.Charge.RequestID)
+		assert.Equal(t, entity.Refund{ServiceID: 7, RequestID: "f1", ChargeRequestID: "r1"}, rs.Refund)
 	})
 	t.Run("invalid", func(t *testing.T) {
 		c, _, _ := newController(t)
-		_, err := c.CreateRefund(ctx, &entity.CreateRefundRequest{ServiceID: 7})
+		_, err := c.CreateRefund(ctx, &entity.CreateRefundRequest{ServiceID: 7, ChargeRequestID: "r1"})
 		assert.ErrorIs(t, err, ErrInvalidRequestID)
+		_, err = c.CreateRefund(ctx, &entity.CreateRefundRequest{ServiceID: 7, RequestID: "f1", ChargeRequestID: strings.Repeat("r", 33)})
+		assert.ErrorIs(t, err, ErrInvalidChargeRequestID)
 	})
 	t.Run("errors", func(t *testing.T) {
 		for repoErr, want := range map[error]error{
-			repository.ErrNotFound:   ErrChargeNotFound,
-			repository.ErrNotCharged: ErrNotCharged,
-			errBoom:                  errBoom,
+			repository.ErrNotFound:        ErrChargeNotFound,
+			repository.ErrNotCharged:      ErrNotCharged,
+			repository.ErrRequestConflict: ErrRequestConflict,
+			errBoom:                       errBoom,
 		} {
 			c, charges, _ := newController(t)
-			charges.EXPECT().Refund(ctx, gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(repository.RefundResult{}, repoErr)
+			charges.EXPECT().Refund(ctx, gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(repository.RefundResult{}, repoErr)
 			_, err := c.CreateRefund(ctx, rq)
 			assert.ErrorIs(t, err, want)
 		}

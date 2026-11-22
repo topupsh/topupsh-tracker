@@ -100,15 +100,19 @@ type (
 
 	// CreateGrantRequest is the body of POST /api/v1/grants.
 	CreateGrantRequest struct {
-		Service string `json:"service"`
-		Org     string `json:"org"`
-		User    string `json:"user"`
-		Credits int64  `json:"credits"`
+		// RequestID makes the grant safe to retry; topup.sh makes one when
+		// it is empty.
+		RequestID string `json:"requestId,omitempty"`
+		Service   string `json:"service"`
+		Org       string `json:"org"`
+		User      string `json:"user"`
+		Credits   int64  `json:"credits"`
 	}
 
 	// Grant is a bucket of extra credits an admin gave a user.
 	Grant struct {
 		ID        string `json:"id"`
+		RequestID string `json:"requestId"`
 		Service   string `json:"service"`
 		Org       string `json:"org"`
 		User      string `json:"user"`

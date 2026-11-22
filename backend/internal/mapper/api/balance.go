@@ -94,7 +94,7 @@ func FromListLedgerEntriesResponseEntityToHTTPResponse(rs *entity.ListLedgerEntr
 			Kind:         string(e.Kind),
 			Amount:       e.Amount,
 			BalanceAfter: e.BalanceAfter,
-			Actor:        e.Actor,
+			Actor:        actorName(e),
 			Operation:    e.Operation,
 			CreatedAt:    e.CreatedAt.UTC().Format(time.RFC3339),
 		}
@@ -144,4 +144,16 @@ func localReader(c fiber.Ctx) (entity.Reader, bool) {
 		return entity.Reader{Root: true}, true
 	}
 	return entity.Reader{}, false
+}
+
+// actorName is who made e as the API shows it: the service's name, root
+// for the admin or scheduler for the credit jobs.
+func actorName(e entity.LedgerEntry) string {
+	switch e.Actor {
+	case entity.ActorKindService:
+		return e.ServiceName
+	case entity.ActorKindAdmin:
+		return "root"
+	}
+	return string(e.Actor)
 }

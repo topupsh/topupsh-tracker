@@ -114,8 +114,11 @@ func (h *CreditAdmin) sendError(c fiber.Ctx, err error, msg string) error {
 	case errors.Is(err, creditadminctrl.ErrInvalidOrg),
 		errors.Is(err, creditadminctrl.ErrInvalidUser),
 		errors.Is(err, creditadminctrl.ErrInvalidLimit),
-		errors.Is(err, creditadminctrl.ErrInvalidCredits):
+		errors.Is(err, creditadminctrl.ErrInvalidCredits),
+		errors.Is(err, creditadminctrl.ErrInvalidRequestID):
 		return sendError(c, fiber.StatusBadRequest, err.Error())
+	case errors.Is(err, creditadminctrl.ErrRequestConflict):
+		return sendError(c, fiber.StatusConflict, err.Error())
 	}
 	logServerError(c, err)
 	return sendError(c, fiber.StatusInternalServerError, msg)

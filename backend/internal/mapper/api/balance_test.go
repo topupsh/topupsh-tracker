@@ -71,10 +71,16 @@ func TestFromHTTPRequestToListLedgerEntriesRequestEntity(t *testing.T) {
 func TestFromListLedgerEntriesResponseEntityToHTTPResponse(t *testing.T) {
 	got := FromListLedgerEntriesResponseEntityToHTTPResponse(&entity.ListLedgerEntriesResponse{Entries: []entity.LedgerEntry{{
 		ID: 1, ServiceName: "mesher", OrgID: "o1", UserID: "u1", Kind: entity.LedgerKindGrant, Amount: 5, BalanceAfter: 5,
-		Actor: "root", CreatedAt: time.Date(2026, 11, 21, 12, 0, 0, 0, time.FixedZone("x", 3600)),
+		Actor: entity.ActorKindAdmin, CreatedAt: time.Date(2026, 11, 21, 12, 0, 0, 0, time.FixedZone("x", 3600)),
 	}}})
 	assert.JSONEq(t, `{"entries":[{"id":"00000000001","service":"mesher","org":"o1","user":"u1","kind":"grant",
 		"amount":5,"balanceAfter":5,"actor":"root","createdAt":"2026-11-21T11:00:00Z"}]}`, string(got))
+
+	for actor, want := range map[entity.ActorKind]string{
+		entity.ActorKindService: "mesher", entity.ActorKindAdmin: "root", entity.ActorKindScheduler: "scheduler",
+	} {
+		assert.Equal(t, want, actorName(entity.LedgerEntry{ServiceName: "mesher", Actor: actor}), actor)
+	}
 }
 
 func TestFromGetBalanceResponseEntityToHTTPResponse_Uncapped(t *testing.T) {

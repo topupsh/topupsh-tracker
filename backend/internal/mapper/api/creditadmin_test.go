@@ -80,8 +80,8 @@ func TestFromHTTPRequestToCreateGrantRequestEntity(t *testing.T) {
 		})
 		return got
 	}
-	assert.Equal(t, &entity.CreateGrantRequest{ServiceName: "mesher", OrgID: "o1", UserID: "u1", Credits: 100},
-		read(`{"service":"mesher","org":"o1","user":"u1","credits":100}`))
+	assert.Equal(t, &entity.CreateGrantRequest{RequestID: "g1", ServiceName: "mesher", OrgID: "o1", UserID: "u1", Credits: 100},
+		read(`{"requestId":"g1","service":"mesher","org":"o1","user":"u1","credits":100}`))
 	assert.Nil(t, read(`{"org":"o1","user":"u1","credits":100}`), "service is required")
 	assert.Nil(t, read(`nope`))
 }
@@ -94,9 +94,9 @@ func TestFromCreateGrantResponseEntityToHTTPResponse(t *testing.T) {
 			ID: 42, OrgID: "o1", UserID: "u1", Amount: 100, Remaining: 100,
 			CreatedAt: at, ExpiresAt: time.Date(2026, 12, 22, 0, 0, 0, 0, time.UTC),
 		},
-		LedgerEntry: entity.LedgerEntry{BalanceAfter: 150},
+		LedgerEntry: entity.LedgerEntry{RequestID: "g1", BalanceAfter: 150},
 	})
-	assert.JSONEq(t, `{"id":"`+FromIDToBase62(42)+`","service":"mesher","org":"o1","user":"u1","credits":100,"remaining":100,`+
+	assert.JSONEq(t, `{"id":"`+FromIDToBase62(42)+`","requestId":"g1","service":"mesher","org":"o1","user":"u1","credits":100,"remaining":100,`+
 		`"createdAt":"2026-11-21T12:00:00Z","expiresAt":"2026-12-22T00:00:00Z","balanceAfter":150}`, string(got))
 }
 

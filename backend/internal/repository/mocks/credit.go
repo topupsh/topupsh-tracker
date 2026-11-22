@@ -36,9 +36,9 @@ func (m *MockCreditRepository) EXPECT() *MockCreditRepositoryMockRecorder {
 }
 
 // CreateGrant mocks base method.
-func (m *MockCreditRepository) CreateGrant(ctx context.Context, b model.CreditBucket, e model.LedgerEntry) (model.CreditBucket, model.LedgerEntry, error) {
+func (m *MockCreditRepository) CreateGrant(ctx context.Context, b model.CreditBucket, e model.LedgerEntry, nextID func() int64) (model.CreditBucket, model.LedgerEntry, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "CreateGrant", ctx, b, e)
+	ret := m.ctrl.Call(m, "CreateGrant", ctx, b, e, nextID)
 	ret0, _ := ret[0].(model.CreditBucket)
 	ret1, _ := ret[1].(model.LedgerEntry)
 	ret2, _ := ret[2].(error)
@@ -46,22 +46,22 @@ func (m *MockCreditRepository) CreateGrant(ctx context.Context, b model.CreditBu
 }
 
 // CreateGrant indicates an expected call of CreateGrant.
-func (mr *MockCreditRepositoryMockRecorder) CreateGrant(ctx, b, e interface{}) *gomock.Call {
+func (mr *MockCreditRepositoryMockRecorder) CreateGrant(ctx, b, e, nextID interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateGrant", reflect.TypeOf((*MockCreditRepository)(nil).CreateGrant), ctx, b, e)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateGrant", reflect.TypeOf((*MockCreditRepository)(nil).CreateGrant), ctx, b, e, nextID)
 }
 
 // UpsertOrgLimit mocks base method.
-func (m *MockCreditRepository) UpsertOrgLimit(ctx context.Context, l model.OrgLimit) (model.OrgLimit, error) {
+func (m *MockCreditRepository) UpsertOrgLimit(ctx context.Context, l model.OrgLimit, nextID func() int64) (model.OrgLimit, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "UpsertOrgLimit", ctx, l)
+	ret := m.ctrl.Call(m, "UpsertOrgLimit", ctx, l, nextID)
 	ret0, _ := ret[0].(model.OrgLimit)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // UpsertOrgLimit indicates an expected call of UpsertOrgLimit.
-func (mr *MockCreditRepositoryMockRecorder) UpsertOrgLimit(ctx, l interface{}) *gomock.Call {
+func (mr *MockCreditRepositoryMockRecorder) UpsertOrgLimit(ctx, l, nextID interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpsertOrgLimit", reflect.TypeOf((*MockCreditRepository)(nil).UpsertOrgLimit), ctx, l)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpsertOrgLimit", reflect.TypeOf((*MockCreditRepository)(nil).UpsertOrgLimit), ctx, l, nextID)
 }
