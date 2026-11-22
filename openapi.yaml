@@ -13,7 +13,7 @@ info:
     Authenticate API calls from the web app with the
     `topupsh_tracker_session` cookie. Root-only setup routes take the
     `topupsh_tracker_root` cookie set by `POST /api/v1/setup/login`; the
-    same root session manages services' API keys. Services call the API
+    same root session manages services' API keys and credit settings. Services call the API
     with their own key in `Authorization: Bearer <key>`.
 
     Errors are JSON `{"error": "<message>"}`.
@@ -32,6 +32,8 @@ tags:
     description: Root-only server settings.
   - name: Services
     description: Root-only management of the API keys services call the API with.
+  - name: Credits
+    description: Root-only credit settings (the per-service switch, org and user limits, and grants).
   - name: Static
     description: Static assets.
 security:
@@ -210,6 +212,149 @@ paths:
       responses:
         "204":
           description: Revoked.
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/ServerError"
+
+  /api/v1/services/{service}/enabled:
+    put:
+      tags: [Credits]
+      operationId: setServiceEnabled
+      summary: Switch credit limiting on or off for a service
+      description: |
+        Credit limiting is off for a new service. While it is off nothing
+        is charged or recorded.
+      security:
+        - root: []
+      parameters:
+        - $ref: "#/components/parameters/Service"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [enabled]
+              properties:
+                enabled:
+                  type: boolean
+      responses:
+        "200":
+          description: The service after the switch.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreditService"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/ServerError"
+
+  /api/v1/orgs/{org}/limits:
+    put:
+      tags: [Credits]
+      operationId: setOrgLimits
+      summary: Set an org's monthly limits for a service
+      description: |
+        Replaces the org's limits for the service. `orgLimit` is the
+        credits the whole org may use in a month; omitted or null, it is
+        the default, 0, so the org can't spend until a limit is set.
+        `userLimit` is the credits each user of the org may use in a
+        month; omitted or null, users are uncapped.
+      security:
+        - root: []
+      parameters:
+        - name: org
+          in: path
+          required: true
+          description: The service's own org ID, 1 to 64 characters.
+          schema:
+            type: string
+            maxLength: 64
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [service]
+              properties:
+                service:
+                  type: string
+                  example: mesher
+                orgLimit:
+                  type: [integer, "null"]
+                  format: int64
+                  minimum: 0
+                userLimit:
+                  type: [integer, "null"]
+                  format: int64
+                  minimum: 0
+      responses:
+        "200":
+          description: The org's limits.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrgLimits"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/ServerError"
+
+  /api/v1/grants:
+    post:
+      tags: [Credits]
+      operationId: createGrant
+      summary: Grant a user extra credits
+      description: |
+        Adds a bucket of credits the user can spend, on top of the monthly
+        limits, and records it in the ledger. It expires one month later,
+        at the next 00:00 UTC (a day the next month lacks becomes its last
+        day), when what is left of it is taken away.
+      security:
+        - root: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [service, org, user, credits]
+              properties:
+                service:
+                  type: string
+                  example: mesher
+                org:
+                  type: string
+                  maxLength: 64
+                user:
+                  type: string
+                  maxLength: 64
+                credits:
+                  type: integer
+                  format: int64
+                  minimum: 1
+      responses:
+        "201":
+          description: The new grant.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Grant"
         "400":
           $ref: "#/components/responses/BadRequest"
         "401":
@@ -430,6 +575,60 @@ components:
         createdAt:
           type: string
           format: date-time
+
+    CreditService:
+      type: object
+      required: [name, enabled]
+      properties:
+        name:
+          type: string
+        enabled:
+          type: boolean
+
+    OrgLimits:
+      type: object
+      required: [service, org, orgLimit, userLimit]
+      properties:
+        service:
+          type: string
+        org:
+          type: string
+        orgLimit:
+          type: integer
+          format: int64
+        userLimit:
+          type: [integer, "null"]
+          format: int64
+          description: Null when users are uncapped.
+
+    Grant:
+      type: object
+      required: [id, service, org, user, credits, remaining, createdAt, expiresAt, balanceAfter]
+      properties:
+        id:
+          type: string
+        service:
+          type: string
+        org:
+          type: string
+        user:
+          type: string
+        credits:
+          type: integer
+          format: int64
+        remaining:
+          type: integer
+          format: int64
+        createdAt:
+          type: string
+          format: date-time
+        expiresAt:
+          type: string
+          format: date-time
+        balanceAfter:
+          type: integer
+          format: int64
+          description: The user's unexpired credits, this grant included.
 
     Settings:
       type: object

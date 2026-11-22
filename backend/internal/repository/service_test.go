@@ -44,6 +44,22 @@ func TestServiceRepository_FindOrCreateService(t *testing.T) {
 	assert.Equal(t, int64(1), found.ID)
 }
 
+func TestServiceRepository_SetServiceEnabled(t *testing.T) {
+	ctx := context.Background()
+	repo := NewServiceRepository(newServiceDB(t))
+	_, err := repo.SetServiceEnabled(ctx, "mesher", true)
+	assert.ErrorIs(t, err, ErrNotFound)
+
+	_, err = repo.FindOrCreateService(ctx, model.Service{ID: 1, Name: "mesher"})
+	require.NoError(t, err)
+	s, err := repo.SetServiceEnabled(ctx, "mesher", true)
+	require.NoError(t, err)
+	assert.True(t, s.Enabled)
+	s, err = repo.SetServiceEnabled(ctx, "mesher", false)
+	require.NoError(t, err)
+	assert.False(t, s.Enabled, "false is written, not skipped as a zero value")
+}
+
 func TestServiceRepository_Keys(t *testing.T) {
 	ctx := context.Background()
 	repo := NewServiceRepository(newServiceDB(t))
@@ -100,6 +116,10 @@ func TestServiceRepository_DBErrors(t *testing.T) {
 
 	_, err = repo.FindOrCreateService(ctx, model.Service{ID: 1, Name: "mesher"})
 	assert.Error(t, err)
+
+	_, err = repo.SetServiceEnabled(ctx, "mesher", true)
+	assert.Error(t, err)
+	assert.NotErrorIs(t, err, ErrNotFound)
 
 	_, err = repo.CreateServiceAPIKey(ctx, model.ServiceAPIKey{ID: 1})
 	assert.Error(t, err)
