@@ -478,6 +478,145 @@ paths:
         "500":
           $ref: "#/components/responses/ServerError"
 
+  /api/v1/view-tokens:
+    post:
+      tags: [Credits]
+      operationId: createViewToken
+      summary: Issue a view token for one user
+      description: |
+        Issues a signed token, valid for one hour, that lets one user of the
+        calling service read their own balance and ledger. The service
+        vouches for its user, so the user needs no topup.sh account: the
+        service hands the token to the user's browser (e.g. in a link), which
+        sends it as `Authorization: Bearer <token>` to `GET /api/v1/balances`
+        and `GET /api/v1/ledger`.
+      security:
+        - serviceKey: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [org, user]
+              properties:
+                org:
+                  type: string
+                  maxLength: 64
+                user:
+                  type: string
+                  maxLength: 64
+      responses:
+        "201":
+          description: The token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ViewToken"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/ServerError"
+
+  /api/v1/balances:
+    get:
+      tags: [Credits]
+      operationId: getBalance
+      summary: Read one user's balance
+      description: |
+        Returns one user's credits in one service: the monthly allowance,
+        the org's usage, the unexpired grants and what a charge can spend
+        now. Reading changes nothing.
+
+        - With a service key, the service reads its own users; `org` and
+          `user` are required, and `service`, if given, must be its own.
+        - With the root session, `service`, `org` and `user` are required.
+        - With a view token, the service, org and user come from the token;
+          naming any of them is a 400.
+      security:
+        - serviceKey: []
+        - root: []
+        - viewToken: []
+      parameters:
+        - $ref: "#/components/parameters/ServiceQuery"
+        - $ref: "#/components/parameters/OrgQuery"
+        - $ref: "#/components/parameters/UserQuery"
+      responses:
+        "200":
+          description: The balance.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Balance"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/ServerError"
+
+  /api/v1/ledger:
+    get:
+      tags: [Credits]
+      operationId: listLedgerEntries
+      summary: Read the ledger
+      description: |
+        Returns the ledger, newest first, a page at a time: pass the
+        `nextCursor` of a page as `cursor` to read the next one.
+
+        - With a service key, only the service's own entries; `org` and
+          `user` filter them, and `service`, if given, must be its own.
+        - With the root session, every service's entries; `service`, `org`
+          and `user` filter them.
+        - With a view token, the token's user's entries; naming a service,
+          org or user is a 400.
+
+        `user` needs `org`, since user IDs are only unique within an org.
+      security:
+        - serviceKey: []
+        - root: []
+        - viewToken: []
+      parameters:
+        - $ref: "#/components/parameters/ServiceQuery"
+        - $ref: "#/components/parameters/OrgQuery"
+        - $ref: "#/components/parameters/UserQuery"
+        - name: cursor
+          in: query
+          description: The `nextCursor` of the previous page.
+          schema:
+            type: string
+        - name: limit
+          in: query
+          description: The page size.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 50
+      responses:
+        "200":
+          description: A page of the ledger.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LedgerPage"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/ServerError"
+
   /auth/config:
     get:
       tags: [Sign-in]
@@ -596,6 +735,12 @@ components:
         A service's API key from `POST /api/v1/services/{service}/keys`.
         It identifies the service, so a service only reaches its own
         credits.
+    viewToken:
+      type: http
+      scheme: bearer
+      description: |
+        A token from `POST /api/v1/view-tokens`. It lets one user of one
+        service read their own credits for an hour.
 
   parameters:
     Provider:
@@ -617,6 +762,27 @@ components:
         type: string
         pattern: "^[a-z0-9][a-z0-9-]{0,63}$"
 
+    ServiceQuery:
+      name: service
+      in: query
+      description: A service name.
+      schema:
+        type: string
+    OrgQuery:
+      name: org
+      in: query
+      description: An org ID of the service.
+      schema:
+        type: string
+        maxLength: 64
+    UserQuery:
+      name: user
+      in: query
+      description: A user ID of the org.
+      schema:
+        type: string
+        maxLength: 64
+
   responses:
     BadRequest:
       description: The request is invalid.
@@ -626,6 +792,12 @@ components:
             $ref: "#/components/schemas/Error"
     Unauthorized:
       description: Missing or invalid credentials.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    Forbidden:
+      description: The credentials may not read this.
       content:
         application/json:
           schema:
@@ -792,6 +964,144 @@ components:
           type: integer
           format: int64
           description: The user's unexpired credits now.
+
+    Balance:
+      type: object
+      required: [service, org, user, limited, balance, available, monthly, orgUsage, grants, renewsAt]
+      properties:
+        service:
+          type: string
+        org:
+          type: string
+        user:
+          type: string
+        limited:
+          type: boolean
+          description: False while the service's credit limiting is off.
+        balance:
+          type: integer
+          format: int64
+          description: |
+            The user's unexpired credits, as the ledger's `balanceAfter`
+            counts them. The monthly allowance joins it with the user's
+            first charge of the month.
+        available:
+          type: integer
+          format: int64
+          description: |
+            What a charge can spend now: the grants, plus the monthly
+            allowance as far as the org limit allows.
+        monthly:
+          type: object
+          required: [limit, used, remaining]
+          description: The user's monthly allowance this UTC month.
+          properties:
+            limit:
+              type: integer
+              format: int64
+            used:
+              type: integer
+              format: int64
+            remaining:
+              type: integer
+              format: int64
+        orgUsage:
+          type: object
+          required: [limit, userLimit, used, remaining]
+          description: The org's monthly limits and usage this UTC month.
+          properties:
+            limit:
+              type: integer
+              format: int64
+            userLimit:
+              type: integer
+              format: int64
+              nullable: true
+              description: Null while users are uncapped.
+            used:
+              type: integer
+              format: int64
+            remaining:
+              type: integer
+              format: int64
+        grants:
+          type: array
+          description: The user's unexpired grants, oldest (spent first) first.
+          items:
+            type: object
+            required: [id, credits, remaining, createdAt, expiresAt]
+            properties:
+              id:
+                type: string
+              credits:
+                type: integer
+                format: int64
+              remaining:
+                type: integer
+                format: int64
+              createdAt:
+                type: string
+                format: date-time
+              expiresAt:
+                type: string
+                format: date-time
+        renewsAt:
+          type: string
+          format: date-time
+          description: When the monthly limits renew (the 1st, 00:00 UTC).
+
+    LedgerEntry:
+      type: object
+      required: [id, service, org, user, kind, amount, balanceAfter, actor, createdAt]
+      properties:
+        id:
+          type: string
+        service:
+          type: string
+        org:
+          type: string
+        user:
+          type: string
+        kind:
+          type: string
+          enum: [spend, refund, grant, renewal, limit, expiry]
+        amount:
+          type: integer
+          format: int64
+          description: Signed; negative takes credits away.
+        balanceAfter:
+          type: integer
+          format: int64
+        actor:
+          type: string
+          description: Who or what made the change, e.g. a service, `root` or `scheduler`.
+        operation:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+
+    LedgerPage:
+      type: object
+      required: [entries]
+      properties:
+        entries:
+          type: array
+          items:
+            $ref: "#/components/schemas/LedgerEntry"
+        nextCursor:
+          type: string
+          description: Reads the next page; left out on the last page.
+
+    ViewToken:
+      type: object
+      required: [token, expiresAt]
+      properties:
+        token:
+          type: string
+        expiresAt:
+          type: string
+          format: date-time
 
     Settings:
       type: object

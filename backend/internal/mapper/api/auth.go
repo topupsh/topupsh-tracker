@@ -88,10 +88,11 @@ func localUserID(c fiber.Ctx) int64 {
 	return id
 }
 
-// pageQuery reads the optional before cursor (a base62 ID) and limit of a
-// page; ok is false when either is malformed.
-func pageQuery(c fiber.Ctx) (before int64, limit int, ok bool) {
-	if s := c.Query("before"); s != "" {
+// pageQuery reads the optional cursor (a base62 ID, in the query parameter
+// named cursorParam) and limit of a page; ok is false when either is
+// malformed.
+func pageQuery(c fiber.Ctx, cursorParam string) (before int64, limit int, ok bool) {
+	if s := c.Query(cursorParam); s != "" {
 		before = monoflake.IDFromBase62(s).Int64()
 		if before <= 0 {
 			return 0, 0, false

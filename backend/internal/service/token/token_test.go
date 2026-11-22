@@ -152,3 +152,38 @@ func TestRootToken_WrongSubject(t *testing.T) {
 	require.NoError(t, err)
 	assert.ErrorIs(t, svc.ValidateRootToken(tok), ErrInvalidToken)
 }
+
+func TestViewToken(t *testing.T) {
+	now := time.Now()
+	svc := newService(t, func() time.Time { return now })
+	v := Viewer{ServiceID: 7, OrgID: "o1", UserID: "u1"}
+
+	tok, exp, err := svc.CreateViewToken(v)
+	require.NoError(t, err)
+	assert.Equal(t, now.Add(ViewTTL), exp)
+	got, err := svc.ValidateViewToken(tok)
+	require.NoError(t, err)
+	assert.Equal(t, v, got)
+
+	// A view token is not a session and vice versa.
+	_, err = svc.ValidateSessionToken(tok)
+	assert.ErrorIs(t, err, ErrInvalidToken)
+	user, err := svc.CreateSessionToken("u1")
+	require.NoError(t, err)
+	_, err = svc.ValidateViewToken(user)
+	assert.ErrorIs(t, err, ErrInvalidToken)
+
+	later := newService(t, func() time.Time { return now.Add(ViewTTL + time.Second) })
+	_, err = later.ValidateViewToken(tok)
+	assert.ErrorIs(t, err, ErrInvalidToken)
+}
+
+func TestViewToken_MissingClaims(t *testing.T) {
+	svc := newService(t, nil)
+	for _, v := range []Viewer{{OrgID: "o1", UserID: "u1"}, {ServiceID: 7, UserID: "u1"}, {ServiceID: 7, OrgID: "o1"}} {
+		tok, _, err := svc.CreateViewToken(v)
+		require.NoError(t, err)
+		_, err = svc.ValidateViewToken(tok)
+		assert.ErrorIs(t, err, ErrInvalidToken, "%+v", v)
+	}
+}

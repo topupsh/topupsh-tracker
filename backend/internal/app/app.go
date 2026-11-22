@@ -20,6 +20,7 @@ import (
 
 	adminctrl "github.com/topupsh/topupsh-tracker/backend/internal/controller/admin"
 	authctrl "github.com/topupsh/topupsh-tracker/backend/internal/controller/auth"
+	balancectrl "github.com/topupsh/topupsh-tracker/backend/internal/controller/balance"
 	chargectrl "github.com/topupsh/topupsh-tracker/backend/internal/controller/charge"
 	creditadminctrl "github.com/topupsh/topupsh-tracker/backend/internal/controller/creditadmin"
 	expiryctrl "github.com/topupsh/topupsh-tracker/backend/internal/controller/expiry"
@@ -210,6 +211,11 @@ func New(cfg Config, web fs.FS) (*App, error) {
 		Charges: chargectrl.New(chargectrl.Params{
 			Charges: repository.NewChargeRepository(db),
 			IDGen:   ids,
+		}),
+		Balances: balancectrl.New(balancectrl.Params{
+			Balances: repository.NewBalanceRepository(db),
+			Services: services,
+			Token:    tokens,
 		}),
 		AllowedOrigins: setup.AllowedOrigins,
 		BasePath:       basePath,

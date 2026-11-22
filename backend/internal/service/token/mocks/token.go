@@ -6,8 +6,10 @@ package mocks
 
 import (
 	reflect "reflect"
+	time "time"
 
 	gomock "github.com/golang/mock/gomock"
+	token "github.com/topupsh/topupsh-tracker/backend/internal/service/token"
 )
 
 // MockService is a mock of Service interface.
@@ -78,6 +80,22 @@ func (mr *MockServiceMockRecorder) CreateStateToken(provider, redirectURL interf
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateStateToken", reflect.TypeOf((*MockService)(nil).CreateStateToken), provider, redirectURL)
 }
 
+// CreateViewToken mocks base method.
+func (m *MockService) CreateViewToken(v token.Viewer) (string, time.Time, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CreateViewToken", v)
+	ret0, _ := ret[0].(string)
+	ret1, _ := ret[1].(time.Time)
+	ret2, _ := ret[2].(error)
+	return ret0, ret1, ret2
+}
+
+// CreateViewToken indicates an expected call of CreateViewToken.
+func (mr *MockServiceMockRecorder) CreateViewToken(v interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateViewToken", reflect.TypeOf((*MockService)(nil).CreateViewToken), v)
+}
+
 // ValidateRootToken mocks base method.
 func (m *MockService) ValidateRootToken(token string) error {
 	m.ctrl.T.Helper()
@@ -120,4 +138,19 @@ func (m *MockService) ValidateStateToken(token, provider string) (string, error)
 func (mr *MockServiceMockRecorder) ValidateStateToken(token, provider interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ValidateStateToken", reflect.TypeOf((*MockService)(nil).ValidateStateToken), token, provider)
+}
+
+// ValidateViewToken mocks base method.
+func (m *MockService) ValidateViewToken(tok string) (token.Viewer, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ValidateViewToken", tok)
+	ret0, _ := ret[0].(token.Viewer)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ValidateViewToken indicates an expected call of ValidateViewToken.
+func (mr *MockServiceMockRecorder) ValidateViewToken(tok interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ValidateViewToken", reflect.TypeOf((*MockService)(nil).ValidateViewToken), tok)
 }
