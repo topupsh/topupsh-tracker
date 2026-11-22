@@ -317,18 +317,21 @@ func (l *ledger) monthlyBucket(now time.Time) (model.CreditBucket, int64, error)
 // its users gets: the user limit, or the org limit when users are uncapped,
 // and never more than the org limit.
 func (l *ledger) limits() (int64, int64, error) {
-	var ol model.OrgLimit
-	err := l.tx.Where("service_id = ? AND org_id = ?", l.charge.ServiceID, l.charge.OrgID).First(&ol).Error
-	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return entity.DefaultOrgMonthlyLimit, entity.DefaultOrgMonthlyLimit, nil
-	}
+	ol, err := findOrgLimit(l.tx, l.charge.ServiceID, l.charge.OrgID)
 	if err != nil {
 		return 0, 0, err
 	}
+	return ol.MonthlyLimit, MonthlyAllowance(ol), nil
+}
+
+// MonthlyAllowance is the monthly credits each user of the org gets: the
+// user limit, or the org limit when users are uncapped, and never more
+// than the org limit.
+func MonthlyAllowance(ol model.OrgLimit) int64 {
 	if ol.UserLimit == nil {
-		return ol.MonthlyLimit, ol.MonthlyLimit, nil
+		return ol.MonthlyLimit
 	}
-	return ol.MonthlyLimit, min(*ol.UserLimit, ol.MonthlyLimit), nil
+	return min(*ol.UserLimit, ol.MonthlyLimit)
 }
 
 // record writes a ledger entry of amount and returns the balance after it.

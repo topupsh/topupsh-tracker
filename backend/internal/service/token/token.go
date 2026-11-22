@@ -3,9 +3,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 // Package token issues and validates the signed JWTs used for browser
-// sessions, root (setup) sessions and OAuth state. All of them are
-// stateless; each kind has its own audience, so one can never pass for
-// another.
+// sessions, root (setup) sessions, OAuth state and credit view tokens. All
+// of them are stateless; each kind has its own audience, so one can never
+// pass for another.
 package token
 
 //go:generate mockgen -source=token.go -destination=mocks/token.go -package=mocks
@@ -25,9 +25,12 @@ const (
 	StateTTL = 5 * time.Minute
 	// RootTTL is how long a root (setup) session lasts.
 	RootTTL = 12 * time.Hour
+	// ViewTTL is how long a credit view token lasts.
+	ViewTTL = time.Hour
 
 	_sessionAudience = "session:human"
 	_rootAudience    = "session:root"
+	_viewAudience    = "view:credits"
 	_rootSubject     = "root"
 	_stateSubject    = "oauth_state"
 )
@@ -52,6 +55,18 @@ type (
 		CreateRootToken() (string, error)
 		// ValidateRootToken checks a root session.
 		ValidateRootToken(token string) error
+		// CreateViewToken signs a token that lets one user of a service
+		// read their own credits, and returns it with its expiry.
+		CreateViewToken(v Viewer) (string, time.Time, error)
+		// ValidateViewToken returns the user a view token was issued for.
+		ValidateViewToken(tok string) (Viewer, error)
+	}
+
+	// Viewer is the user of a service a view token was issued for.
+	Viewer struct {
+		ServiceID int64
+		OrgID     string
+		UserID    string
 	}
 
 	// Config holds the token signing settings.
@@ -68,6 +83,12 @@ type (
 	stateClaims struct {
 		jwt.RegisteredClaims
 		RedirectURL string `json:"rurl,omitempty"`
+	}
+
+	viewClaims struct {
+		jwt.RegisteredClaims
+		ServiceID int64  `json:"svc"`
+		OrgID     string `json:"org"`
 	}
 )
 
@@ -149,6 +170,33 @@ func (s *service) ValidateRootToken(token string) error {
 		return ErrInvalidToken
 	}
 	return nil
+}
+
+func (s *service) CreateViewToken(v Viewer) (string, time.Time, error) {
+	now := s.now()
+	exp := now.Add(ViewTTL)
+	tok, err := s.sign(viewClaims{
+		RegisteredClaims: jwt.RegisteredClaims{
+			Subject:   v.UserID,
+			Audience:  jwt.ClaimStrings{_viewAudience},
+			IssuedAt:  jwt.NewNumericDate(now),
+			ExpiresAt: jwt.NewNumericDate(exp),
+		},
+		ServiceID: v.ServiceID,
+		OrgID:     v.OrgID,
+	})
+	return tok, exp, err
+}
+
+func (s *service) ValidateViewToken(token string) (Viewer, error) {
+	var claims viewClaims
+	if err := s.parse(token, &claims, _viewAudience); err != nil {
+		return Viewer{}, err
+	}
+	if claims.Subject == "" || claims.OrgID == "" || claims.ServiceID == 0 {
+		return Viewer{}, ErrInvalidToken
+	}
+	return Viewer{ServiceID: claims.ServiceID, OrgID: claims.OrgID, UserID: claims.Subject}, nil
 }
 
 func (s *service) sign(claims jwt.Claims) (string, error) {

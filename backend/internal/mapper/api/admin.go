@@ -34,7 +34,7 @@ func FromGetAdminStatsResponseEntityToHTTPResponse(rs *entity.GetAdminStatsRespo
 // FromHTTPRequestToListAdminUsersRequestEntity reads the optional q
 // search, before cursor and limit of GET /admin/v1/users.
 func FromHTTPRequestToListAdminUsersRequestEntity(c fiber.Ctx) *entity.ListAdminUsersRequest {
-	before, limit, ok := pageQuery(c)
+	before, limit, ok := pageQuery(c, "before")
 	if !ok {
 		return nil
 	}

@@ -109,8 +109,10 @@ type (
 
 	// LedgerEntry is one change to a user's balance.
 	LedgerEntry struct {
-		ID           int64
-		ServiceID    int64
+		ID        int64
+		ServiceID int64
+		// ServiceName is set where entries of several services are read.
+		ServiceName  string
 		OrgID        string
 		UserID       string
 		Kind         LedgerKind
