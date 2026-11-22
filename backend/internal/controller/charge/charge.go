@@ -23,14 +23,17 @@ import (
 // Field length limits, matching the columns.
 const (
 	_maxSubjectLen   = 64
-	_maxRequestIDLen = 128
-	_maxOperationLen = 255
+	_maxRequestIDLen = 32
+	_maxOperationLen = 128
 )
 
 var (
 	// ErrInvalidRequestID is returned for a request ID that is empty or
-	// longer than 128 characters.
+	// longer than 32 characters.
 	ErrInvalidRequestID = errors.New("invalid request id")
+	// ErrInvalidChargeRequestID is returned for a refund's charge request
+	// ID that is empty or longer than 32 characters.
+	ErrInvalidChargeRequestID = errors.New("invalid charge request id")
 	// ErrInvalidOrg is returned for an org ID that is empty or longer
 	// than 64 characters.
 	ErrInvalidOrg = errors.New("invalid org")
@@ -39,12 +42,13 @@ var (
 	ErrInvalidUser = errors.New("invalid user")
 	// ErrInvalidCredits is returned for a charge of less than 1 credit.
 	ErrInvalidCredits = errors.New("credits must be positive")
-	// ErrInvalidOperation is returned for an operation longer than 255
+	// ErrInvalidOperation is returned for an operation longer than 128
 	// characters.
 	ErrInvalidOperation = errors.New("operation is too long")
-	// ErrRequestConflict is returned when a request ID is reused for a
-	// different org, user or number of credits.
-	ErrRequestConflict = errors.New("request id was used for another charge")
+	// ErrRequestConflict is returned when a request ID is reused for
+	// another request: a charge of a different org, user or number of
+	// credits, or a refund of another charge.
+	ErrRequestConflict = errors.New("request id was used for another request")
 	// ErrChargeNotFound is returned when refunding an unknown request.
 	ErrChargeNotFound = errors.New("charge not found")
 	// ErrNotCharged is returned when refunding a refused charge.
@@ -63,7 +67,8 @@ type (
 		// succeeds without spending or recording anything.
 		CreateCharge(ctx context.Context, rq *entity.CreateChargeRequest) (*entity.CreateChargeResponse, error)
 		// CreateRefund gives a charge back to the buckets it came from,
-		// once; a retry returns the same refund.
+		// once; a retry with the same request ID, or another refund of the
+		// charge, returns the same refund.
 		CreateRefund(ctx context.Context, rq *entity.CreateRefundRequest) (*entity.CreateRefundResponse, error)
 	}
 
@@ -103,14 +108,13 @@ func (c *controller) CreateCharge(ctx context.Context, rq *entity.CreateChargeRe
 	case len(rq.Operation) > _maxOperationLen:
 		return nil, ErrInvalidOperation
 	}
-	rs, err := c.charges.Charge(ctx, model.Charge{
-		ID:        c.ids.NextID(),
+	rs, err := c.charges.Charge(ctx, model.LedgerEntry{
 		CreatedAt: c.now().UTC(),
 		ServiceID: rq.ServiceID,
-		RequestID: rq.RequestID,
+		RequestID: &rq.RequestID,
 		OrgID:     rq.OrgID,
 		UserID:    rq.UserID,
-		Credits:   rq.Credits,
+		Amount:    -rq.Credits,
 		Operation: rq.Operation,
 	}, c.ids.NextID)
 	if err != nil {
@@ -122,7 +126,7 @@ func (c *controller) CreateCharge(ctx context.Context, rq *entity.CreateChargeRe
 			UserID: rq.UserID, Credits: rq.Credits, Operation: rq.Operation,
 		}}, nil
 	}
-	ch := mappermodel.FromChargeModelToChargeEntity(rs.Charge)
+	ch := mappermodel.FromLedgerEntryModelToChargeEntity(rs.Entry)
 	return &entity.CreateChargeResponse{
 		Limited:  true,
 		Charge:   ch,
@@ -131,20 +135,24 @@ func (c *controller) CreateCharge(ctx context.Context, rq *entity.CreateChargeRe
 }
 
 func (c *controller) CreateRefund(ctx context.Context, rq *entity.CreateRefundRequest) (*entity.CreateRefundResponse, error) {
-	if !validLen(rq.RequestID, _maxRequestIDLen) {
+	switch {
+	case !validLen(rq.RequestID, _maxRequestIDLen):
 		return nil, ErrInvalidRequestID
+	case !validLen(rq.ChargeRequestID, _maxRequestIDLen):
+		return nil, ErrInvalidChargeRequestID
 	}
-	rs, err := c.charges.Refund(ctx, rq.ServiceID, rq.RequestID, c.now().UTC(), c.ids.NextID)
+	rs, err := c.charges.Refund(ctx, rq.ServiceID, rq.RequestID, rq.ChargeRequestID, c.now().UTC(), c.ids.NextID)
 	if err != nil {
 		return nil, mapError(err, "refund")
 	}
 	if !rs.Limited {
-		return &entity.CreateRefundResponse{Charge: entity.Charge{ServiceID: rq.ServiceID, RequestID: rq.RequestID}}, nil
+		return &entity.CreateRefundResponse{Refund: entity.Refund{
+			ServiceID: rq.ServiceID, RequestID: rq.RequestID, ChargeRequestID: rq.ChargeRequestID,
+		}}, nil
 	}
 	return &entity.CreateRefundResponse{
 		Limited: true,
-		Charge:  mappermodel.FromChargeModelToChargeEntity(rs.Charge),
-		Balance: rs.Balance,
+		Refund:  mappermodel.FromLedgerEntryModelToRefundEntity(rs.Refund, rq.ChargeRequestID),
 	}, nil
 }
 

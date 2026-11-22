@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/topupsh/topupsh-tracker/backend/internal/data/entity"
+	"github.com/topupsh/topupsh-tracker/backend/internal/data/model"
 	mappermodel "github.com/topupsh/topupsh-tracker/backend/internal/mapper/model"
 	"github.com/topupsh/topupsh-tracker/backend/internal/repository"
 	"github.com/topupsh/topupsh-tracker/backend/internal/service/token"
@@ -148,7 +149,7 @@ func (c *controller) GetBalance(ctx context.Context, rq *entity.GetBalanceReques
 	var grants int64
 	for _, bk := range b.Buckets {
 		rs.Credits += bk.Remaining
-		if bk.Kind == string(entity.BucketKindMonthly) {
+		if bk.BucketType == model.BucketTypeMonthly {
 			rs.Monthly.Used = bk.Amount - bk.Remaining
 			continue
 		}

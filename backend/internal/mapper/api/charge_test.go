@@ -67,7 +67,7 @@ func TestFromHTTPRequestToCreateRefundRequestEntity(t *testing.T) {
 		}))
 		return got
 	}
-	assert.Equal(t, &entity.CreateRefundRequest{ServiceID: 7, RequestID: "r1"}, read(int64(7), `{"requestId":"r1"}`))
+	assert.Equal(t, &entity.CreateRefundRequest{ServiceID: 7, RequestID: "f1", ChargeRequestID: "r1"}, read(int64(7), `{"requestId":"f1","chargeRequestId":"r1"}`))
 	assert.Nil(t, read(int64(7), `nope`))
 	assert.Nil(t, read("7", `{"requestId":"r1"}`), "the service ID must be an int64")
 }
@@ -75,10 +75,10 @@ func TestFromHTTPRequestToCreateRefundRequestEntity(t *testing.T) {
 func TestFromCreateRefundResponseEntityToHTTPResponse(t *testing.T) {
 	at := time.Date(2026, 11, 21, 12, 0, 0, 0, time.UTC)
 	got := FromCreateRefundResponseEntityToHTTPResponse(&entity.CreateRefundResponse{
-		Limited: true, Balance: 9, Charge: entity.Charge{RequestID: "r1", RefundedCredits: 2, RefundedAt: &at},
+		Limited: true, Refund: entity.Refund{RequestID: "f1", ChargeRequestID: "r1", Credits: 2, Balance: 9, CreatedAt: at},
 	})
-	assert.JSONEq(t, `{"requestId":"r1","limited":true,"credits":2,"refundedAt":"2026-11-21T12:00:00Z","balance":9}`, string(got))
+	assert.JSONEq(t, `{"requestId":"f1","chargeRequestId":"r1","limited":true,"credits":2,"refundedAt":"2026-11-21T12:00:00Z","balance":9}`, string(got))
 
-	off := FromCreateRefundResponseEntityToHTTPResponse(&entity.CreateRefundResponse{Charge: entity.Charge{RequestID: "r1"}})
-	assert.JSONEq(t, `{"requestId":"r1","limited":false,"credits":0}`, string(off))
+	off := FromCreateRefundResponseEntityToHTTPResponse(&entity.CreateRefundResponse{Refund: entity.Refund{RequestID: "f1", ChargeRequestID: "r1"}})
+	assert.JSONEq(t, `{"requestId":"f1","chargeRequestId":"r1","limited":false,"credits":0}`, string(off))
 }

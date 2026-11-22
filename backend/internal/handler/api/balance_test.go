@@ -175,7 +175,7 @@ func TestBalance_ListLedgerEntries(t *testing.T) {
 		}).Return(&entity.ListLedgerEntriesResponse{
 			Entries: []entity.LedgerEntry{{
 				ID: 9, ServiceName: "mesher", OrgID: "o1", UserID: "u1", Kind: entity.LedgerKindSpend,
-				Amount: -1, BalanceAfter: 4, Actor: "mesher", Operation: "tool", CreatedAt: at,
+				Amount: -1, BalanceAfter: 4, Actor: entity.ActorKindService, Operation: "tool", CreatedAt: at,
 			}},
 			NextCursor: 9,
 		}, nil)

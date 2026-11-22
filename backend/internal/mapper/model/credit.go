@@ -61,7 +61,7 @@ func FromOrgLimitEntityToOrgLimitModel(e entity.OrgLimit) model.OrgLimit {
 func FromCreditBucketModelToCreditBucketEntity(m model.CreditBucket) entity.CreditBucket {
 	return entity.CreditBucket{
 		ID: m.ID, ServiceID: m.ServiceID, OrgID: m.OrgID, UserID: m.UserID,
-		Kind: entity.BucketKind(m.Kind), Amount: m.Amount, Remaining: m.Remaining,
+		Kind: FromBucketTypeModelToBucketKindEntity(m.BucketType), Amount: m.Amount, Remaining: m.Remaining,
 		CreatedAt: m.CreatedAt, ExpiresAt: m.ExpiresAt,
 	}
 }
@@ -70,37 +70,38 @@ func FromCreditBucketModelToCreditBucketEntity(m model.CreditBucket) entity.Cred
 func FromCreditBucketEntityToCreditBucketModel(e entity.CreditBucket) model.CreditBucket {
 	return model.CreditBucket{
 		ID: e.ID, ServiceID: e.ServiceID, OrgID: e.OrgID, UserID: e.UserID,
-		Kind: string(e.Kind), Amount: e.Amount, Remaining: e.Remaining,
+		BucketType: FromBucketKindEntityToBucketTypeModel(e.Kind), Amount: e.Amount, Remaining: e.Remaining,
 		CreatedAt: e.CreatedAt, ExpiresAt: e.ExpiresAt,
 	}
 }
 
-// FromChargeModelToChargeEntity maps a stored charge to the domain charge.
-func FromChargeModelToChargeEntity(m model.Charge) entity.Charge {
+// FromLedgerEntryModelToChargeEntity maps a stored spend or refusal entry
+// to the domain charge.
+func FromLedgerEntryModelToChargeEntity(m model.LedgerEntry) entity.Charge {
 	return entity.Charge{
-		ID: m.ID, ServiceID: m.ServiceID, RequestID: m.RequestID, OrgID: m.OrgID,
-		UserID: m.UserID, Credits: m.Credits, Operation: m.Operation,
-		Refusal: entity.Refusal(m.Refusal), Balance: m.Balance, OrgRemaining: m.OrgRemaining,
-		CreatedAt: m.CreatedAt, RefundedAt: m.RefundedAt, RefundedCredits: m.RefundedCredits,
+		ID: m.ID, ServiceID: m.ServiceID, RequestID: fromRequestID(m.RequestID), OrgID: m.OrgID,
+		UserID: m.UserID, Credits: -m.Amount, Operation: m.Operation,
+		Refusal: _refusals[m.RefusalReason], Balance: m.BalanceAfter, OrgRemaining: m.OrgRemaining,
+		CreatedAt: m.CreatedAt,
 	}
 }
 
-// FromChargeEntityToChargeModel maps a domain charge to its stored form.
-func FromChargeEntityToChargeModel(e entity.Charge) model.Charge {
-	return model.Charge{
-		ID: e.ID, ServiceID: e.ServiceID, RequestID: e.RequestID, OrgID: e.OrgID,
-		UserID: e.UserID, Credits: e.Credits, Operation: e.Operation,
-		Refusal: string(e.Refusal), Balance: e.Balance, OrgRemaining: e.OrgRemaining,
-		CreatedAt: e.CreatedAt, RefundedAt: e.RefundedAt, RefundedCredits: e.RefundedCredits,
+// FromLedgerEntryModelToRefundEntity maps a stored refund entry of the
+// charge of chargeRequestID to the domain refund.
+func FromLedgerEntryModelToRefundEntity(m model.LedgerEntry, chargeRequestID string) entity.Refund {
+	return entity.Refund{
+		ID: m.ID, ServiceID: m.ServiceID, RequestID: fromRequestID(m.RequestID), ChargeRequestID: chargeRequestID,
+		OrgID: m.OrgID, UserID: m.UserID, Credits: m.Amount, Operation: m.Operation,
+		Balance: m.BalanceAfter, OrgRemaining: m.OrgRemaining, CreatedAt: m.CreatedAt,
 	}
 }
 
 // FromLedgerEntryModelToLedgerEntryEntity maps a stored ledger entry to the domain entry.
 func FromLedgerEntryModelToLedgerEntryEntity(m model.LedgerEntry) entity.LedgerEntry {
 	return entity.LedgerEntry{
-		ID: m.ID, ServiceID: m.ServiceID, OrgID: m.OrgID, UserID: m.UserID,
-		Kind: entity.LedgerKind(m.Kind), Amount: m.Amount, BalanceAfter: m.BalanceAfter,
-		Actor: m.Actor, Operation: m.Operation, CreatedAt: m.CreatedAt,
+		ID: m.ID, ServiceID: m.ServiceID, RequestID: fromRequestID(m.RequestID), OrgID: m.OrgID, UserID: m.UserID,
+		Kind: FromEntryTypeModelToLedgerKindEntity(m.EntryType), Amount: m.Amount, BalanceAfter: m.BalanceAfter,
+		Actor: FromActorTypeModelToActorKindEntity(m.ActorType), Operation: m.Operation, CreatedAt: m.CreatedAt,
 	}
 }
 
@@ -116,8 +117,99 @@ func FromLedgerEntryModelsToLedgerEntryEntities(ms []model.LedgerEntry) []entity
 // FromLedgerEntryEntityToLedgerEntryModel maps a domain ledger entry to its stored form.
 func FromLedgerEntryEntityToLedgerEntryModel(e entity.LedgerEntry) model.LedgerEntry {
 	return model.LedgerEntry{
-		ID: e.ID, ServiceID: e.ServiceID, OrgID: e.OrgID, UserID: e.UserID,
-		Kind: string(e.Kind), Amount: e.Amount, BalanceAfter: e.BalanceAfter,
-		Actor: e.Actor, Operation: e.Operation, CreatedAt: e.CreatedAt,
+		ID: e.ID, ServiceID: e.ServiceID, RequestID: toRequestID(e.RequestID), OrgID: e.OrgID, UserID: e.UserID,
+		EntryType: FromLedgerKindEntityToEntryTypeModel(e.Kind), Amount: e.Amount, BalanceAfter: e.BalanceAfter,
+		ActorType: FromActorKindEntityToActorTypeModel(e.Actor), Operation: e.Operation, CreatedAt: e.CreatedAt,
 	}
+}
+
+var (
+	_bucketKinds = map[model.BucketType]entity.BucketKind{
+		model.BucketTypeMonthly: entity.BucketKindMonthly,
+		model.BucketTypeGrant:   entity.BucketKindGrant,
+	}
+	_ledgerKinds = map[model.EntryType]entity.LedgerKind{
+		model.EntryTypeSpend:   entity.LedgerKindSpend,
+		model.EntryTypeRefund:  entity.LedgerKindRefund,
+		model.EntryTypeGrant:   entity.LedgerKindGrant,
+		model.EntryTypeRenewal: entity.LedgerKindRenewal,
+		model.EntryTypeLimit:   entity.LedgerKindLimit,
+		model.EntryTypeExpiry:  entity.LedgerKindExpiry,
+	}
+	_actorKinds = map[model.ActorType]entity.ActorKind{
+		model.ActorTypeService:   entity.ActorKindService,
+		model.ActorTypeAdmin:     entity.ActorKindAdmin,
+		model.ActorTypeScheduler: entity.ActorKindScheduler,
+	}
+	_refusals = map[model.RefusalReason]entity.Refusal{
+		model.RefusalReasonOrgLimit:  entity.RefusalOrgLimit,
+		model.RefusalReasonUserLimit: entity.RefusalUserLimit,
+	}
+)
+
+// fromRequestID is a stored request ID; "" for none.
+func fromRequestID(id *string) string {
+	if id == nil {
+		return ""
+	}
+	return *id
+}
+
+// toRequestID is the stored form of a request ID; nil for none.
+func toRequestID(id string) *string {
+	if id == "" {
+		return nil
+	}
+	return &id
+}
+
+// FromBucketTypeModelToBucketKindEntity maps a stored bucket type to its
+// kind; "" for an unknown type.
+func FromBucketTypeModelToBucketKindEntity(t model.BucketType) entity.BucketKind {
+	return _bucketKinds[t]
+}
+
+// FromBucketKindEntityToBucketTypeModel maps a bucket kind to its stored
+// type; 0 for an unknown kind.
+func FromBucketKindEntityToBucketTypeModel(k entity.BucketKind) model.BucketType {
+	for t, kind := range _bucketKinds {
+		if kind == k {
+			return t
+		}
+	}
+	return 0
+}
+
+// FromEntryTypeModelToLedgerKindEntity maps a stored ledger entry type to
+// its kind; "" for an unknown type.
+func FromEntryTypeModelToLedgerKindEntity(t model.EntryType) entity.LedgerKind {
+	return _ledgerKinds[t]
+}
+
+// FromLedgerKindEntityToEntryTypeModel maps a ledger kind to its stored
+// type; 0 for an unknown kind.
+func FromLedgerKindEntityToEntryTypeModel(k entity.LedgerKind) model.EntryType {
+	for t, kind := range _ledgerKinds {
+		if kind == k {
+			return t
+		}
+	}
+	return 0
+}
+
+// FromActorTypeModelToActorKindEntity maps a stored actor type to its kind;
+// "" for an unknown type.
+func FromActorTypeModelToActorKindEntity(t model.ActorType) entity.ActorKind {
+	return _actorKinds[t]
+}
+
+// FromActorKindEntityToActorTypeModel maps an actor kind to its stored
+// type; 0 for an unknown kind.
+func FromActorKindEntityToActorTypeModel(k entity.ActorKind) model.ActorType {
+	for t, kind := range _actorKinds {
+		if kind == k {
+			return t
+		}
+	}
+	return 0
 }

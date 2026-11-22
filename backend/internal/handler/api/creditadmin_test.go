@@ -132,7 +132,7 @@ func TestCreditAdmin_CreateGrant(t *testing.T) {
 	t.Run("ok", func(t *testing.T) {
 		app, credits, setup := newCreditAdminApp(t)
 		asRoot(setup)
-		credits.EXPECT().CreateGrant(gomock.Any(), &entity.CreateGrantRequest{ServiceName: "mesher", OrgID: "o1", UserID: "u1", Credits: 100}).
+		credits.EXPECT().CreateGrant(gomock.Any(), &entity.CreateGrantRequest{RequestID: "g1", ServiceName: "mesher", OrgID: "o1", UserID: "u1", Credits: 100}).
 			Return(&entity.CreateGrantResponse{
 				Service: entity.Service{Name: "mesher"},
 				Bucket: entity.CreditBucket{
@@ -140,11 +140,11 @@ func TestCreditAdmin_CreateGrant(t *testing.T) {
 					CreatedAt: time.Date(2026, 11, 21, 12, 0, 0, 0, time.UTC),
 					ExpiresAt: time.Date(2026, 12, 22, 0, 0, 0, 0, time.UTC),
 				},
-				LedgerEntry: entity.LedgerEntry{BalanceAfter: 100},
+				LedgerEntry: entity.LedgerEntry{RequestID: "g1", BalanceAfter: 100},
 			}, nil)
-		res, body := send(t, app, http.MethodPost, "/api/v1/grants", `{"service":"mesher","org":"o1","user":"u1","credits":100}`, _rootCookie)
+		res, body := send(t, app, http.MethodPost, "/api/v1/grants", `{"requestId":"g1","service":"mesher","org":"o1","user":"u1","credits":100}`, _rootCookie)
 		assert.Equal(t, http.StatusCreated, res.StatusCode)
-		assert.JSONEq(t, `{"id":"`+mapper.FromIDToBase62(42)+`","service":"mesher","org":"o1","user":"u1","credits":100,"remaining":100,`+
+		assert.JSONEq(t, `{"id":"`+mapper.FromIDToBase62(42)+`","requestId":"g1","service":"mesher","org":"o1","user":"u1","credits":100,"remaining":100,`+
 			`"createdAt":"2026-11-21T12:00:00Z","expiresAt":"2026-12-22T00:00:00Z","balanceAfter":100}`, body)
 	})
 	t.Run("bad request", func(t *testing.T) {
@@ -154,7 +154,7 @@ func TestCreditAdmin_CreateGrant(t *testing.T) {
 		assert.Equal(t, http.StatusBadRequest, res.StatusCode)
 	})
 	t.Run("invalid", func(t *testing.T) {
-		for _, err := range []error{creditadminctrl.ErrInvalidOrg, creditadminctrl.ErrInvalidUser, creditadminctrl.ErrInvalidCredits} {
+		for _, err := range []error{creditadminctrl.ErrInvalidOrg, creditadminctrl.ErrInvalidUser, creditadminctrl.ErrInvalidCredits, creditadminctrl.ErrInvalidRequestID} {
 			app, credits, setup := newCreditAdminApp(t)
 			asRoot(setup)
 			credits.EXPECT().CreateGrant(gomock.Any(), gomock.Any()).Return(nil, err)
@@ -162,6 +162,13 @@ func TestCreditAdmin_CreateGrant(t *testing.T) {
 			assert.Equal(t, http.StatusBadRequest, res.StatusCode)
 			assert.JSONEq(t, `{"error":"`+err.Error()+`"}`, body)
 		}
+	})
+	t.Run("conflict", func(t *testing.T) {
+		app, credits, setup := newCreditAdminApp(t)
+		asRoot(setup)
+		credits.EXPECT().CreateGrant(gomock.Any(), gomock.Any()).Return(nil, creditadminctrl.ErrRequestConflict)
+		res, _ := send(t, app, http.MethodPost, "/api/v1/grants", `{"service":"mesher"}`, _rootCookie)
+		assert.Equal(t, http.StatusConflict, res.StatusCode)
 	})
 	t.Run("server error", func(t *testing.T) {
 		app, credits, setup := newCreditAdminApp(t)

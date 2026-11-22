@@ -12,7 +12,6 @@ import (
 
 	"gorm.io/gorm"
 
-	"github.com/topupsh/topupsh-tracker/backend/internal/data/entity"
 	"github.com/topupsh/topupsh-tracker/backend/internal/data/model"
 )
 
@@ -80,17 +79,17 @@ func (r *expiryRepository) expireBatch(db *gorm.DB, serviceID int64, at time.Tim
 			return err
 		}
 		if err := expired(tx.Where("service_id = ?", serviceID), at).
-			Order("org_id, user_id, created_at, id").Limit(_expiryBatch).Find(&buckets).Error; err != nil {
+			Order("org_mapping_id, user_mapping_id, created_at, id").Limit(_expiryBatch).Find(&buckets).Error; err != nil {
 			return err
 		}
 		var balance int64
 		for i, b := range buckets {
-			if i == 0 || b.OrgID != buckets[i-1].OrgID || b.UserID != buckets[i-1].UserID {
+			if i == 0 || b.OrgMappingID != buckets[i-1].OrgMappingID || b.UserMappingID != buckets[i-1].UserMappingID {
 				// Expired buckets keep their credits until expired here,
 				// so the sum over all of the user's buckets is the balance
 				// before this run's expiries.
 				if err := tx.Model(&model.CreditBucket{}).
-					Where("service_id = ? AND org_id = ? AND user_id = ?", serviceID, b.OrgID, b.UserID).
+					Where("service_id = ? AND org_mapping_id = ? AND user_mapping_id = ?", serviceID, b.OrgMappingID, b.UserMappingID).
 					Select("COALESCE(SUM(remaining), 0)").Scan(&balance).Error; err != nil {
 					return err
 				}
@@ -102,8 +101,8 @@ func (r *expiryRepository) expireBatch(db *gorm.DB, serviceID int64, at time.Tim
 			balance -= left
 			credits += left
 			if err := tx.Create(&model.LedgerEntry{
-				ID: nextID(), CreatedAt: at, ServiceID: serviceID, OrgID: b.OrgID, UserID: b.UserID,
-				Kind: string(entity.LedgerKindExpiry), Amount: -left, BalanceAfter: balance, Actor: entity.ActorScheduler,
+				ID: nextID(), CreatedAt: at, ServiceID: serviceID, OrgMappingID: b.OrgMappingID, UserMappingID: b.UserMappingID,
+				EntryType: model.EntryTypeExpiry, Amount: -left, BalanceAfter: balance, ActorType: model.ActorTypeScheduler,
 			}).Error; err != nil {
 				return err
 			}

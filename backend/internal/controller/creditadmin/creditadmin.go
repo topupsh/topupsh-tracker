@@ -10,6 +10,7 @@ package creditadmin
 
 import (
 	"context"
+	"crypto/rand"
 	"errors"
 	"fmt"
 	"time"
@@ -21,11 +22,11 @@ import (
 	"github.com/topupsh/topupsh-tracker/backend/internal/service/idgen"
 )
 
-// ActorRoot is the ledger actor of changes the root admin makes.
-const ActorRoot = "root"
-
 // _maxSubjectLen is the longest org or user ID a service may use.
 const _maxSubjectLen = 64
+
+// _maxRequestIDLen is the longest request ID a grant may have.
+const _maxRequestIDLen = 32
 
 // MaxUsageUsers is the most users ListUserUsage returns.
 const MaxUsageUsers = 500
@@ -43,6 +44,12 @@ var (
 	ErrInvalidLimit = errors.New("limits must not be negative")
 	// ErrInvalidCredits is returned for a grant of less than 1 credit.
 	ErrInvalidCredits = errors.New("credits must be positive")
+	// ErrInvalidRequestID is returned for a grant request ID longer than
+	// 32 characters.
+	ErrInvalidRequestID = errors.New("invalid request id")
+	// ErrRequestConflict is returned when a grant's request ID was used
+	// before.
+	ErrRequestConflict = errors.New("request id was used for another request")
 )
 
 type (
@@ -133,7 +140,7 @@ func (c *controller) SetOrgLimits(ctx context.Context, rq *entity.SetOrgLimitsRe
 		OrgID:        rq.OrgID,
 		MonthlyLimit: monthly,
 		UserLimit:    rq.UserLimit,
-	})
+	}, c.ids.NextID)
 	if err != nil {
 		return nil, fmt.Errorf("upsert org limit: %w", err)
 	}
@@ -153,31 +160,42 @@ func (c *controller) CreateGrant(ctx context.Context, rq *entity.CreateGrantRequ
 	if rq.Credits <= 0 {
 		return nil, ErrInvalidCredits
 	}
+	if len(rq.RequestID) > _maxRequestIDLen {
+		return nil, ErrInvalidRequestID
+	}
+	requestID := rq.RequestID
+	if requestID == "" {
+		requestID = rand.Text()
+	}
 	s, err := c.findService(ctx, rq.ServiceName)
 	if err != nil {
 		return nil, err
 	}
 	now := c.now().UTC()
 	b, e, err := c.credits.CreateGrant(ctx, model.CreditBucket{
-		ID:        c.ids.NextID(),
-		CreatedAt: now,
-		ServiceID: s.ID,
-		OrgID:     rq.OrgID,
-		UserID:    rq.UserID,
-		Kind:      string(entity.BucketKindGrant),
-		Amount:    rq.Credits,
-		Remaining: rq.Credits,
-		ExpiresAt: GrantExpiry(now),
+		ID:         c.ids.NextID(),
+		CreatedAt:  now,
+		ServiceID:  s.ID,
+		OrgID:      rq.OrgID,
+		UserID:     rq.UserID,
+		BucketType: model.BucketTypeGrant,
+		Amount:     rq.Credits,
+		Remaining:  rq.Credits,
+		ExpiresAt:  GrantExpiry(now),
 	}, model.LedgerEntry{
 		ID:        c.ids.NextID(),
 		CreatedAt: now,
 		ServiceID: s.ID,
 		OrgID:     rq.OrgID,
 		UserID:    rq.UserID,
-		Kind:      string(entity.LedgerKindGrant),
+		EntryType: model.EntryTypeGrant,
+		RequestID: &requestID,
 		Amount:    rq.Credits,
-		Actor:     ActorRoot,
-	})
+		ActorType: model.ActorTypeAdmin,
+	}, c.ids.NextID)
+	if errors.Is(err, repository.ErrRequestConflict) {
+		return nil, ErrRequestConflict
+	}
 	if err != nil {
 		return nil, fmt.Errorf("create grant: %w", err)
 	}

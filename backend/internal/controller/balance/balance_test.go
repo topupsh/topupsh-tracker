@@ -68,7 +68,7 @@ func TestNew_Defaults(t *testing.T) {
 
 func TestGetBalance(t *testing.T) {
 	ctx := context.Background()
-	grant := model.CreditBucket{ID: 11, ServiceID: 7, OrgID: "o1", UserID: "u1", Kind: "grant", Amount: 7, Remaining: 6, CreatedAt: _now, ExpiresAt: _renews}
+	grant := model.CreditBucket{ID: 11, ServiceID: 7, OrgID: "o1", UserID: "u1", BucketType: model.BucketTypeGrant, Amount: 7, Remaining: 6, CreatedAt: _now, ExpiresAt: _renews}
 
 	t.Run("service key", func(t *testing.T) {
 		c, d := newController(t)
@@ -77,7 +77,7 @@ func TestGetBalance(t *testing.T) {
 			OrgLimit: model.OrgLimit{MonthlyLimit: 100, UserLimit: ptr(10)},
 			OrgUsed:  95,
 			Buckets: []model.CreditBucket{
-				{ID: 10, Kind: "monthly", Amount: 10, Remaining: 7, CreatedAt: _month, ExpiresAt: _renews},
+				{ID: 10, BucketType: model.BucketTypeMonthly, Amount: 10, Remaining: 7, CreatedAt: _month, ExpiresAt: _renews},
 				grant,
 			},
 		}, nil)
@@ -118,7 +118,7 @@ func TestGetBalance(t *testing.T) {
 		d.balances.EXPECT().GetBalance(ctx, int64(7), "o1", "u1", _now).Return(repository.Balance{
 			Service:  _mesher,
 			OrgLimit: model.OrgLimit{MonthlyLimit: 100, UserLimit: ptr(2)},
-			Buckets:  []model.CreditBucket{{Kind: "monthly", Amount: 10, Remaining: 6}},
+			Buckets:  []model.CreditBucket{{BucketType: model.BucketTypeMonthly, Amount: 10, Remaining: 6}},
 		}, nil)
 		rs, err := c.GetBalance(ctx, &entity.GetBalanceRequest{Reader: _asKey, OrgID: "o1", UserID: "u1"})
 		require.NoError(t, err)
@@ -214,7 +214,7 @@ func ledgerRows(ids ...int64) []repository.LedgerRow {
 	rows := make([]repository.LedgerRow, len(ids))
 	for i, id := range ids {
 		rows[i] = repository.LedgerRow{
-			LedgerEntry: model.LedgerEntry{ID: id, ServiceID: 7, OrgID: "o1", UserID: "u1", Kind: "spend", Amount: -1, CreatedAt: _now},
+			LedgerEntry: model.LedgerEntry{ID: id, ServiceID: 7, OrgID: "o1", UserID: "u1", EntryType: model.EntryTypeSpend, Amount: -1, CreatedAt: _now},
 			ServiceName: "mesher",
 		}
 	}

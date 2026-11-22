@@ -54,17 +54,15 @@ func FromHTTPRequestToCreateRefundRequestEntity(c fiber.Ctx) *entity.CreateRefun
 	if err := json.Unmarshal(c.Body(), &rq); err != nil || !ok {
 		return nil
 	}
-	return &entity.CreateRefundRequest{ServiceID: serviceID, RequestID: rq.RequestID}
+	return &entity.CreateRefundRequest{ServiceID: serviceID, RequestID: rq.RequestID, ChargeRequestID: rq.ChargeRequestID}
 }
 
 // FromCreateRefundResponseEntityToHTTPResponse renders a refund.
 func FromCreateRefundResponseEntityToHTTPResponse(rs *entity.CreateRefundResponse) []byte {
-	v := view.Refund{RequestID: rs.Charge.RequestID, Limited: rs.Limited, Credits: rs.Charge.RefundedCredits}
+	v := view.Refund{RequestID: rs.Refund.RequestID, ChargeRequestID: rs.Refund.ChargeRequestID, Limited: rs.Limited, Credits: rs.Refund.Credits}
 	if rs.Limited {
-		v.Balance = &rs.Balance
-	}
-	if rs.Charge.RefundedAt != nil {
-		v.RefundedAt = rs.Charge.RefundedAt.UTC().Format(time.RFC3339)
+		v.Balance = &rs.Refund.Balance
+		v.RefundedAt = rs.Refund.CreatedAt.UTC().Format(time.RFC3339)
 	}
 	return marshal(v)
 }

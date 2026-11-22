@@ -488,6 +488,10 @@ paths:
               type: object
               required: [service, org, user, credits]
               properties:
+                requestId:
+                  type: string
+                  maxLength: 32
+                  description: Unique per service; topup.sh makes one when it is missing.
                 service:
                   type: string
                   example: mesher
@@ -514,6 +518,12 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
+        "409":
+          description: The request ID was used before.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
         "500":
           $ref: "#/components/responses/ServerError"
 
@@ -543,8 +553,8 @@ paths:
               properties:
                 requestId:
                   type: string
-                  maxLength: 128
-                  description: Unique per service; a retry reuses it.
+                  maxLength: 32
+                  description: Unique per service across charges, refunds and grants; a retry reuses it.
                 org:
                   type: string
                   maxLength: 64
@@ -557,7 +567,7 @@ paths:
                   minimum: 1
                 operation:
                   type: string
-                  maxLength: 255
+                  maxLength: 128
                   example: github.create_issue
       responses:
         "200":
@@ -577,7 +587,7 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthorized"
         "409":
-          description: The request ID was used for another org, user or number of credits.
+          description: The request ID was used for another request, or for another org, user or number of credits.
           content:
             application/json:
               schema:
@@ -591,11 +601,12 @@ paths:
       operationId: createRefund
       summary: Refund a charge
       description: |
-        Gives a charge back to the buckets it came from, once, and records
-        it in the ledger; a retry returns the same refund. Credits whose
-        bucket has expired since are not returned. While the service's
-        credit limiting is off, refunding an unknown request ID succeeds
-        with `limited` false.
+        Gives the charge of `chargeRequestId` back to the buckets it came
+        from, once, and records it in the ledger under the refund's own
+        `requestId`; a retry, or another refund of the same charge, returns
+        the same refund. Credits whose bucket has expired since are not
+        returned. While the service's credit limiting is off, refunding an
+        unknown charge succeeds with `limited` false.
       security:
         - serviceKey: []
       requestBody:
@@ -604,11 +615,16 @@ paths:
           application/json:
             schema:
               type: object
-              required: [requestId]
+              required: [requestId, chargeRequestId]
               properties:
                 requestId:
                   type: string
-                  maxLength: 128
+                  maxLength: 32
+                  description: The refund's own request ID, unique per service; a retry reuses it.
+                chargeRequestId:
+                  type: string
+                  maxLength: 32
+                  description: The request ID of the charge to refund.
       responses:
         "200":
           description: The refund.
@@ -623,7 +639,7 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
         "409":
-          description: The charge was refused, so there is nothing to refund.
+          description: The charge was refused, so there is nothing to refund, or the request ID was used for another request.
           content:
             application/json:
               schema:
@@ -1113,9 +1129,11 @@ components:
 
     Grant:
       type: object
-      required: [id, service, org, user, credits, remaining, createdAt, expiresAt, balanceAfter]
+      required: [id, requestId, service, org, user, credits, remaining, createdAt, expiresAt, balanceAfter]
       properties:
         id:
+          type: string
+        requestId:
           type: string
         service:
           type: string
@@ -1170,13 +1188,15 @@ components:
 
     Refund:
       type: object
-      required: [requestId, limited, credits]
+      required: [requestId, chargeRequestId, limited, credits]
       properties:
         requestId:
           type: string
+        chargeRequestId:
+          type: string
         limited:
           type: boolean
-          description: False for an unknown request while credit limiting is off.
+          description: False for an unknown charge while credit limiting is off.
         credits:
           type: integer
           format: int64
@@ -1187,7 +1207,7 @@ components:
         balance:
           type: integer
           format: int64
-          description: The user's unexpired credits now.
+          description: The user's unexpired credits after the refund.
 
     Balance:
       type: object
@@ -1298,7 +1318,7 @@ components:
           format: int64
         actor:
           type: string
-          description: Who or what made the change, e.g. a service, `root` or `scheduler`.
+          description: Who or what made the change, stored as an actor type; the service's name, `root` (the admin) or `scheduler` (the credit jobs).
         operation:
           type: string
         createdAt:

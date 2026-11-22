@@ -92,7 +92,7 @@ func TestSetOrgLimits(t *testing.T) {
 		d.ids.EXPECT().NextID().Return(int64(1))
 		d.credits.EXPECT().UpsertOrgLimit(ctx, model.OrgLimit{
 			ID: 1, CreatedAt: _now, UpdatedAt: _now, ServiceID: 7, OrgID: "o1", MonthlyLimit: 1000, UserLimit: ptr(10),
-		}).Return(model.OrgLimit{ID: 9, ServiceID: 7, OrgID: "o1", MonthlyLimit: 1000, UserLimit: ptr(10)}, nil)
+		}, gomock.Any()).Return(model.OrgLimit{ID: 9, ServiceID: 7, OrgID: "o1", MonthlyLimit: 1000, UserLimit: ptr(10)}, nil)
 		rs, err := c.SetOrgLimits(ctx, &entity.SetOrgLimitsRequest{ServiceName: "mesher", OrgID: "o1", MonthlyLimit: ptr(1000), UserLimit: ptr(10)})
 		require.NoError(t, err)
 		assert.Equal(t, "mesher", rs.Service.Name)
@@ -106,7 +106,7 @@ func TestSetOrgLimits(t *testing.T) {
 		d.ids.EXPECT().NextID().Return(int64(1))
 		d.credits.EXPECT().UpsertOrgLimit(ctx, model.OrgLimit{
 			ID: 1, CreatedAt: _now, UpdatedAt: _now, ServiceID: 7, OrgID: "o1", MonthlyLimit: 50,
-		}).Return(model.OrgLimit{ID: 1, ServiceID: 7, OrgID: "o1", MonthlyLimit: 50}, nil)
+		}, gomock.Any()).Return(model.OrgLimit{ID: 1, ServiceID: 7, OrgID: "o1", MonthlyLimit: 50}, nil)
 		rs, err := c.SetOrgLimits(ctx, &entity.SetOrgLimitsRequest{ServiceName: "mesher", OrgID: "o1"})
 		require.NoError(t, err)
 		assert.Nil(t, rs.OrgLimit.UserLimit, "users are uncapped")
@@ -143,7 +143,7 @@ func TestSetOrgLimits(t *testing.T) {
 		c, d := newController(t)
 		d.services.EXPECT().FindServiceByName(ctx, "mesher").Return(_mesher, nil)
 		d.ids.EXPECT().NextID().Return(int64(1))
-		d.credits.EXPECT().UpsertOrgLimit(ctx, gomock.Any()).Return(model.OrgLimit{}, errBoom)
+		d.credits.EXPECT().UpsertOrgLimit(ctx, gomock.Any(), gomock.Any()).Return(model.OrgLimit{}, errBoom)
 		_, err := c.SetOrgLimits(ctx, &entity.SetOrgLimitsRequest{ServiceName: "mesher", OrgID: "o1"})
 		assert.ErrorIs(t, err, errBoom)
 	})
@@ -151,7 +151,8 @@ func TestSetOrgLimits(t *testing.T) {
 
 func TestCreateGrant(t *testing.T) {
 	ctx := context.Background()
-	rq := &entity.CreateGrantRequest{ServiceName: "mesher", OrgID: "o1", UserID: "u1", Credits: 100}
+	rq := &entity.CreateGrantRequest{RequestID: "g1", ServiceName: "mesher", OrgID: "o1", UserID: "u1", Credits: 100}
+	g1 := "g1"
 	expires := time.Date(2026, 12, 22, 0, 0, 0, 0, time.UTC)
 	t.Run("ok", func(t *testing.T) {
 		c, d := newController(t)
@@ -162,15 +163,15 @@ func TestCreateGrant(t *testing.T) {
 		)
 		b := model.CreditBucket{
 			ID: 1, CreatedAt: _now, ServiceID: 7, OrgID: "o1", UserID: "u1",
-			Kind: "grant", Amount: 100, Remaining: 100, ExpiresAt: expires,
+			BucketType: model.BucketTypeGrant, Amount: 100, Remaining: 100, ExpiresAt: expires,
 		}
 		e := model.LedgerEntry{
 			ID: 2, CreatedAt: _now, ServiceID: 7, OrgID: "o1", UserID: "u1",
-			Kind: "grant", Amount: 100, Actor: ActorRoot,
+			EntryType: model.EntryTypeGrant, RequestID: &g1, Amount: 100, ActorType: model.ActorTypeAdmin,
 		}
 		saved := e
 		saved.BalanceAfter = 150
-		d.credits.EXPECT().CreateGrant(ctx, b, e).Return(b, saved, nil)
+		d.credits.EXPECT().CreateGrant(ctx, b, e, gomock.Any()).Return(b, saved, nil)
 		rs, err := c.CreateGrant(ctx, rq)
 		require.NoError(t, err)
 		assert.Equal(t, "mesher", rs.Service.Name)
@@ -178,6 +179,29 @@ func TestCreateGrant(t *testing.T) {
 		assert.Equal(t, expires, rs.Bucket.ExpiresAt)
 		assert.Equal(t, entity.LedgerKindGrant, rs.LedgerEntry.Kind)
 		assert.Equal(t, int64(150), rs.LedgerEntry.BalanceAfter)
+		assert.Equal(t, "g1", rs.LedgerEntry.RequestID)
+	})
+	t.Run("request id made when missing", func(t *testing.T) {
+		c, d := newController(t)
+		d.services.EXPECT().FindServiceByName(ctx, "mesher").Return(_mesher, nil)
+		d.ids.EXPECT().NextID().Return(int64(1)).Times(2)
+		d.credits.EXPECT().CreateGrant(ctx, gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
+			func(_ context.Context, b model.CreditBucket, e model.LedgerEntry, _ func() int64) (model.CreditBucket, model.LedgerEntry, error) {
+				return b, e, nil
+			})
+		norq := *rq
+		norq.RequestID = ""
+		rs, err := c.CreateGrant(ctx, &norq)
+		require.NoError(t, err)
+		assert.Len(t, rs.LedgerEntry.RequestID, 26)
+	})
+	t.Run("request conflict", func(t *testing.T) {
+		c, d := newController(t)
+		d.services.EXPECT().FindServiceByName(ctx, "mesher").Return(_mesher, nil)
+		d.ids.EXPECT().NextID().Return(int64(1)).Times(2)
+		d.credits.EXPECT().CreateGrant(ctx, gomock.Any(), gomock.Any(), gomock.Any()).Return(model.CreditBucket{}, model.LedgerEntry{}, repository.ErrRequestConflict)
+		_, err := c.CreateGrant(ctx, rq)
+		assert.ErrorIs(t, err, ErrRequestConflict)
 	})
 	t.Run("invalid", func(t *testing.T) {
 		c, _ := newController(t)
@@ -190,6 +214,7 @@ func TestCreateGrant(t *testing.T) {
 			{entity.CreateGrantRequest{ServiceName: "mesher", OrgID: "o1", UserID: strings.Repeat("u", 65), Credits: 1}, ErrInvalidUser},
 			{entity.CreateGrantRequest{ServiceName: "mesher", OrgID: "o1", UserID: "u1"}, ErrInvalidCredits},
 			{entity.CreateGrantRequest{ServiceName: "mesher", OrgID: "o1", UserID: "u1", Credits: -5}, ErrInvalidCredits},
+			{entity.CreateGrantRequest{RequestID: strings.Repeat("g", 33), ServiceName: "mesher", OrgID: "o1", UserID: "u1", Credits: 1}, ErrInvalidRequestID},
 		} {
 			_, err := c.CreateGrant(ctx, &tc.rq)
 			assert.ErrorIs(t, err, tc.err)
@@ -205,7 +230,7 @@ func TestCreateGrant(t *testing.T) {
 		c, d := newController(t)
 		d.services.EXPECT().FindServiceByName(ctx, "mesher").Return(_mesher, nil)
 		d.ids.EXPECT().NextID().Return(int64(1)).Times(2)
-		d.credits.EXPECT().CreateGrant(ctx, gomock.Any(), gomock.Any()).Return(model.CreditBucket{}, model.LedgerEntry{}, errBoom)
+		d.credits.EXPECT().CreateGrant(ctx, gomock.Any(), gomock.Any(), gomock.Any()).Return(model.CreditBucket{}, model.LedgerEntry{}, errBoom)
 		_, err := c.CreateGrant(ctx, rq)
 		assert.ErrorIs(t, err, errBoom)
 	})

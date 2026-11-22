@@ -33,13 +33,16 @@ type (
 
 	// CreateRefundRequest is the body of POST /api/v1/refunds.
 	CreateRefundRequest struct {
-		RequestID string `json:"requestId"`
+		// RequestID is the refund's own request ID.
+		RequestID       string `json:"requestId"`
+		ChargeRequestID string `json:"chargeRequestId"`
 	}
 
 	// Refund is a refunded charge.
 	Refund struct {
-		RequestID string `json:"requestId"`
-		Limited   bool   `json:"limited"`
+		RequestID       string `json:"requestId"`
+		ChargeRequestID string `json:"chargeRequestId"`
+		Limited         bool   `json:"limited"`
 		// Credits is what was given back; credits of expired buckets are
 		// not.
 		Credits    int64  `json:"credits"`

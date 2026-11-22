@@ -38,31 +38,31 @@ func (m *MockChargeRepository) EXPECT() *MockChargeRepositoryMockRecorder {
 }
 
 // Charge mocks base method.
-func (m *MockChargeRepository) Charge(ctx context.Context, c model.Charge, nextID func() int64) (repository.ChargeResult, error) {
+func (m *MockChargeRepository) Charge(ctx context.Context, e model.LedgerEntry, nextID func() int64) (repository.ChargeResult, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Charge", ctx, c, nextID)
+	ret := m.ctrl.Call(m, "Charge", ctx, e, nextID)
 	ret0, _ := ret[0].(repository.ChargeResult)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // Charge indicates an expected call of Charge.
-func (mr *MockChargeRepositoryMockRecorder) Charge(ctx, c, nextID interface{}) *gomock.Call {
+func (mr *MockChargeRepositoryMockRecorder) Charge(ctx, e, nextID interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Charge", reflect.TypeOf((*MockChargeRepository)(nil).Charge), ctx, c, nextID)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Charge", reflect.TypeOf((*MockChargeRepository)(nil).Charge), ctx, e, nextID)
 }
 
 // Refund mocks base method.
-func (m *MockChargeRepository) Refund(ctx context.Context, serviceID int64, requestID string, at time.Time, nextID func() int64) (repository.RefundResult, error) {
+func (m *MockChargeRepository) Refund(ctx context.Context, serviceID int64, requestID, chargeRequestID string, at time.Time, nextID func() int64) (repository.RefundResult, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Refund", ctx, serviceID, requestID, at, nextID)
+	ret := m.ctrl.Call(m, "Refund", ctx, serviceID, requestID, chargeRequestID, at, nextID)
 	ret0, _ := ret[0].(repository.RefundResult)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // Refund indicates an expected call of Refund.
-func (mr *MockChargeRepositoryMockRecorder) Refund(ctx, serviceID, requestID, at, nextID interface{}) *gomock.Call {
+func (mr *MockChargeRepositoryMockRecorder) Refund(ctx, serviceID, requestID, chargeRequestID, at, nextID interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Refund", reflect.TypeOf((*MockChargeRepository)(nil).Refund), ctx, serviceID, requestID, at, nextID)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Refund", reflect.TypeOf((*MockChargeRepository)(nil).Refund), ctx, serviceID, requestID, chargeRequestID, at, nextID)
 }

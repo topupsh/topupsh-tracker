@@ -7,7 +7,7 @@ package model
 // Models are the models the database is migrated to.
 func Models() []any {
 	return []any{
-		&User{}, &Service{}, &ServiceAPIKey{}, &OrgLimit{},
-		&CreditBucket{}, &Charge{}, &ChargeSpend{}, &LedgerEntry{},
+		&User{}, &Service{}, &ServiceAPIKey{}, &ExternalIDMapping{}, &OperationMapping{}, &OrgLimit{},
+		&CreditBucket{}, &ChargeSpend{}, &LedgerEntry{},
 	}
 }

@@ -29,8 +29,12 @@ const (
 	LedgerKindExpiry LedgerKind = "expiry"
 )
 
-// ActorScheduler is the ledger actor of the scheduled credit jobs.
-const ActorScheduler = "scheduler"
+// Ledger entry actors.
+const (
+	ActorKindService   ActorKind = "service"
+	ActorKindAdmin     ActorKind = "admin"
+	ActorKindScheduler ActorKind = "scheduler"
+)
 
 // Charge refusals.
 const (
@@ -44,6 +48,9 @@ type (
 
 	// LedgerKind says what changed a balance.
 	LedgerKind string
+
+	// ActorKind says who or what changed a balance.
+	ActorKind string
 
 	// Refusal says which limit refused a charge; empty means charged.
 	Refusal string
@@ -95,23 +102,42 @@ type (
 		ExpiresAt time.Time
 	}
 
-	// Charge is one spend a service asked for, and its outcome.
+	// Charge is one spend a service asked for and its outcome.
 	Charge struct {
 		ID        int64
 		ServiceID int64
 		RequestID string
 		OrgID     string
 		UserID    string
+		// Credits is what was spent; 0 when refused.
 		Credits   int64
 		Operation string
 		Refusal   Refusal
 		// Balance is the user's unexpired credits after the charge.
 		Balance int64
 		// OrgRemaining is what was left of the org limit after the charge.
-		OrgRemaining    int64
-		CreatedAt       time.Time
-		RefundedAt      *time.Time
-		RefundedCredits int64
+		OrgRemaining int64
+		CreatedAt    time.Time
+	}
+
+	// Refund gives a charge's credits back.
+	Refund struct {
+		ID        int64
+		ServiceID int64
+		RequestID string
+		// ChargeRequestID is the request ID of the refunded charge.
+		ChargeRequestID string
+		OrgID           string
+		UserID          string
+		// Credits is what was given back; credits of expired buckets are
+		// not.
+		Credits   int64
+		Operation string
+		// Balance is the user's unexpired credits after the refund.
+		Balance int64
+		// OrgRemaining is what was left of the org limit after the refund.
+		OrgRemaining int64
+		CreatedAt    time.Time
 	}
 
 	// LedgerEntry is one change to a user's balance.
@@ -119,13 +145,16 @@ type (
 		ID        int64
 		ServiceID int64
 		// ServiceName is set where entries of several services are read.
-		ServiceName  string
+		ServiceName string
+		// RequestID is the request that made the entry; empty on entries
+		// the system makes.
+		RequestID    string
 		OrgID        string
 		UserID       string
 		Kind         LedgerKind
 		Amount       int64
 		BalanceAfter int64
-		Actor        string
+		Actor        ActorKind
 		Operation    string
 		CreatedAt    time.Time
 	}

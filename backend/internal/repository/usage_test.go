@@ -34,7 +34,7 @@ func newUsageDB(t *testing.T) (*gorm.DB, UsageRepository, model.Service) {
 	mesher, err := services.SetServiceDefaults(ctx, "mesher", 50, &four)
 	require.NoError(t, err)
 	for i, org := range []string{"o1", "o3"} {
-		_, err = credits.UpsertOrgLimit(ctx, model.OrgLimit{ID: int64(90 + i), ServiceID: 1, OrgID: org, MonthlyLimit: 100})
+		_, err = credits.UpsertOrgLimit(ctx, model.OrgLimit{ID: int64(90 + i), ServiceID: 1, OrgID: org, MonthlyLimit: 100}, _mappingIDs)
 		require.NoError(t, err)
 	}
 	month := MonthStart(_readAt)
@@ -50,7 +50,7 @@ func newUsageDB(t *testing.T) (*gorm.DB, UsageRepository, model.Service) {
 		bucket(15, "o2", "u3", "monthly", 4, 0, month.AddDate(0, -1, 0), month),
 		tmphost,
 	} {
-		require.NoError(t, db.Create(&b).Error)
+		storeBuckets(t, db, b)
 	}
 	return db, NewUsageRepository(db), mesher
 }
@@ -66,7 +66,7 @@ func TestUsageRepository_ListOrgUsage(t *testing.T) {
 	assert.Equal(t, OrgUsage{OrgLimit: orgs[0].OrgLimit, Custom: true, Used: 13}, orgs[0])
 	assert.Equal(t, "o1", orgs[0].OrgLimit.OrgID)
 	assert.Equal(t, int64(100), orgs[0].OrgLimit.MonthlyLimit)
-	assert.Equal(t, OrgUsage{OrgLimit: model.OrgLimit{ServiceID: 1, OrgID: "o2", MonthlyLimit: 50, UserLimit: &four}, Used: 1}, orgs[1],
+	assert.Equal(t, OrgUsage{OrgLimit: model.OrgLimit{ServiceID: 1, OrgMappingID: OrgMappingID(1, "o2"), OrgID: "o2", MonthlyLimit: 50, UserLimit: &four}, Used: 1}, orgs[1],
 		"an org without limits gets the service's defaults")
 	assert.Equal(t, "o3", orgs[2].OrgLimit.OrgID)
 	assert.True(t, orgs[2].Custom)
@@ -95,8 +95,8 @@ func TestUsageRepository_ListUserUsage(t *testing.T) {
 	assert.Equal(t, "u2", users[1].UserID)
 	assert.Equal(t, int64(10), users[1].MonthlyUsed)
 	assert.Equal(t, UserUsage{
-		OrgID: "o2", UserID: "u3", MonthlyUsed: 1, Grants: 0, Balance: 3,
-		OrgLimit: model.OrgLimit{ServiceID: 1, OrgID: "o2", MonthlyLimit: 50, UserLimit: &four},
+		OrgMappingID: OrgMappingID(1, "o2"), OrgID: "o2", UserID: "u3", MonthlyUsed: 1, Grants: 0, Balance: 3,
+		OrgLimit: model.OrgLimit{ServiceID: 1, OrgMappingID: OrgMappingID(1, "o2"), OrgID: "o2", MonthlyLimit: 50, UserLimit: &four},
 	}, users[2], "expired buckets and last month's spending don't count")
 
 	users, err = repo.ListUserUsage(ctx, mesher, "o2", _readAt, 10)
@@ -111,7 +111,8 @@ func TestUsageRepository_ListUserUsage(t *testing.T) {
 
 func TestUsageRepository_DBErrors(t *testing.T) {
 	ctx := context.Background()
-	// Each query fails in turn, so every error return is reached.
+	// Each call of the kind fails in turn, so every error return is
+	// reached.
 	for _, tc := range []struct {
 		kind string
 		call func(UsageRepository, model.Service) error
@@ -127,8 +128,14 @@ func TestUsageRepository_DBErrors(t *testing.T) {
 			return err
 		}},
 	} {
-		db, repo, mesher := newUsageDB(t)
-		failNth(t, db, tc.kind, 1)
-		assert.Error(t, tc.call(repo, mesher), tc.kind)
+		for nth := 1; ; nth++ {
+			db, repo, mesher := newUsageDB(t)
+			failNth(t, db, tc.kind, nth)
+			err := tc.call(repo, mesher)
+			if err == nil {
+				break // past the call's last query of this kind
+			}
+			assert.ErrorIs(t, err, errDB, "%s #%d", tc.kind, nth)
+		}
 	}
 }
