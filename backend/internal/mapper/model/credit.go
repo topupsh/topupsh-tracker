@@ -11,12 +11,18 @@ import (
 
 // FromServiceModelToServiceEntity maps a stored service to the domain service.
 func FromServiceModelToServiceEntity(m model.Service) entity.Service {
-	return entity.Service{ID: m.ID, Name: m.Name, Enabled: m.Enabled, CreatedAt: m.CreatedAt}
+	return entity.Service{
+		ID: m.ID, Name: m.Name, Enabled: m.Enabled, CreatedAt: m.CreatedAt,
+		DefaultOrgLimit: m.DefaultOrgLimit, DefaultUserLimit: m.DefaultUserLimit,
+	}
 }
 
 // FromServiceEntityToServiceModel maps a domain service to its stored form.
 func FromServiceEntityToServiceModel(e entity.Service) model.Service {
-	return model.Service{ID: e.ID, Name: e.Name, Enabled: e.Enabled, CreatedAt: e.CreatedAt}
+	return model.Service{
+		ID: e.ID, Name: e.Name, Enabled: e.Enabled, CreatedAt: e.CreatedAt,
+		DefaultOrgLimit: e.DefaultOrgLimit, DefaultUserLimit: e.DefaultUserLimit,
+	}
 }
 
 // FromServiceAPIKeyModelToServiceAPIKeyEntity maps a stored key to the domain key.

@@ -145,3 +145,89 @@ export async function fetchAdminUser(id) {
   const { user } = await request(`/users/${encodeURIComponent(id)}`, { fallback: 'Failed to load user', base: ADMIN_BASE_URL })
   return user
 }
+
+// send makes a root call with a JSON body (when given) and returns the
+// parsed body, or null for 204. Failures throw an Error carrying the HTTP
+// status.
+async function send(method, path, { body, fallback }) {
+  const init = { method, credentials: 'same-origin' }
+  if (body !== undefined) {
+    init.headers = { 'Content-Type': 'application/json' }
+    init.body = JSON.stringify(body)
+  }
+  const res = await fetch(`${API_BASE_URL}${path}`, init)
+  if (!res.ok) throw await httpError(res, `${fallback} (${res.status})`)
+  return res.status === 204 ? null : res.json()
+}
+
+function servicePath(service) {
+  return `/services/${encodeURIComponent(service)}`
+}
+
+// listServices returns every credit service, with its switch, its default
+// limits and its API keys, newest first.
+export async function listServices() {
+  const { services } = await request('/services', { fallback: 'Failed to load services' })
+  return services
+}
+
+// createServiceKey issues an API key, creating the service when it is new.
+// The returned { apiKey, key } is the only time the key itself is shown.
+export function createServiceKey(service) {
+  return send('POST', `${servicePath(service)}/keys`, { fallback: 'Failed to create API key' })
+}
+
+export async function revokeServiceKey(service, id) {
+  await send('DELETE', `${servicePath(service)}/keys/${encodeURIComponent(id)}`, { fallback: 'Failed to revoke API key' })
+}
+
+// setServiceEnabled switches credit limiting on or off for a service.
+export function setServiceEnabled(service, enabled) {
+  return send('PUT', `${servicePath(service)}/enabled`, { body: { enabled }, fallback: 'Failed to update service' })
+}
+
+// setServiceDefaults sets the limits of the orgs without their own; a null
+// userLimit leaves users uncapped.
+export function setServiceDefaults(service, { orgLimit, userLimit }) {
+  return send('PUT', `${servicePath(service)}/defaults`, { body: { orgLimit, userLimit }, fallback: 'Failed to save defaults' })
+}
+
+// listOrgUsage returns a service's orgs with their limits and this month's
+// usage.
+export async function listOrgUsage(service) {
+  const { orgs } = await request(`${servicePath(service)}/orgs`, { fallback: 'Failed to load orgs' })
+  return orgs
+}
+
+// setOrgLimits sets an org's limits; a null userLimit leaves users uncapped.
+export function setOrgLimits(service, org, { orgLimit, userLimit }) {
+  return send('PUT', `/orgs/${encodeURIComponent(org)}/limits`, {
+    body: { service, orgLimit, userLimit },
+    fallback: 'Failed to save limits',
+  })
+}
+
+// listUserUsage returns { users, truncated }: a service's users with credits,
+// of one org when org is set.
+export function listUserUsage(service, org = '') {
+  const query = org ? `?${new URLSearchParams({ org })}` : ''
+  return request(`${servicePath(service)}/users${query}`, { fallback: 'Failed to load usage' })
+}
+
+// createGrant gives a user extra credits that expire in a month.
+export function createGrant({ service, org, user, credits }) {
+  return send('POST', '/grants', { body: { service, org, user, credits }, fallback: 'Failed to grant credits' })
+}
+
+// LEDGER_PAGE_SIZE is how many entries a page of the admin ledger shows.
+export const LEDGER_PAGE_SIZE = 50
+
+// listLedger returns a page of the ledger, newest first, as
+// { entries, nextCursor }; empty filters match everything.
+export function listLedger({ service = '', org = '', user = '', cursor = '' } = {}) {
+  const query = new URLSearchParams({ limit: String(LEDGER_PAGE_SIZE) })
+  for (const [k, v] of Object.entries({ service, org, user, cursor })) {
+    if (v) query.set(k, v)
+  }
+  return request(`/ledger?${query}`, { fallback: 'Failed to load ledger' })
+}

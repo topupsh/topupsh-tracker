@@ -196,6 +196,26 @@ func TestChargeRepository_Charge_UserLimit(t *testing.T) {
 	assert.Equal(t, int64(2), monthlyBucket(t, db, "u1").Remaining)
 }
 
+func TestChargeRepository_Charge_ServiceDefaults(t *testing.T) {
+	ctx := context.Background()
+	db, repo := newChargeDB(t)
+	_, err := NewServiceRepository(db).SetServiceDefaults(ctx, "mesher", 100, ptr(2))
+	require.NoError(t, err)
+
+	rs, err := repo.Charge(ctx, newCharge(100, "r1", "u1", 2, _chargeAt), ids())
+	require.NoError(t, err)
+	assert.Empty(t, rs.Charge.Refusal, "an org without limits spends under the service's defaults")
+	assert.Equal(t, int64(98), rs.Charge.OrgRemaining)
+	rs, err = repo.Charge(ctx, newCharge(101, "r2", "u1", 1, _chargeAt), ids())
+	require.NoError(t, err)
+	assert.Equal(t, "user_limit", rs.Charge.Refusal, "the default user limit applies")
+
+	setLimits(t, db, "o1", 100, nil)
+	rs, err = repo.Charge(ctx, newCharge(102, "r3", "u1", 1, _chargeAt), ids())
+	require.NoError(t, err)
+	assert.Empty(t, rs.Charge.Refusal, "the org's own limits win over the defaults")
+}
+
 func TestChargeRepository_Charge_UserLimitAboveOrgLimit(t *testing.T) {
 	db, repo := newChargeDB(t)
 	setLimits(t, db, "o1", 4, ptr(9))

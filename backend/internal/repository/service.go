@@ -28,6 +28,14 @@ type (
 		// SetServiceEnabled switches credit limiting on or off for the
 		// service named name. It returns ErrNotFound for an unknown service.
 		SetServiceEnabled(ctx context.Context, name string, enabled bool) (model.Service, error)
+		// SetServiceDefaults sets the limits of the orgs of the service
+		// named name that have none of their own; a nil userLimit means
+		// uncapped. It returns ErrNotFound for an unknown service.
+		SetServiceDefaults(ctx context.Context, name string, orgLimit int64, userLimit *int64) (model.Service, error)
+		// ListServices returns every service, ordered by name.
+		ListServices(ctx context.Context) ([]model.Service, error)
+		// ListServiceAPIKeys returns every service's keys, newest first.
+		ListServiceAPIKeys(ctx context.Context) ([]model.ServiceAPIKey, error)
 		// CreateServiceAPIKey stores a new key.
 		CreateServiceAPIKey(ctx context.Context, k model.ServiceAPIKey) (model.ServiceAPIKey, error)
 		// RevokeServiceAPIKey revokes the key id of the service serviceID
@@ -72,6 +80,32 @@ func (r *serviceRepository) SetServiceEnabled(ctx context.Context, name string, 
 		return model.Service{}, res.Error
 	}
 	return r.FindServiceByName(ctx, name)
+}
+
+func (r *serviceRepository) SetServiceDefaults(ctx context.Context, name string, orgLimit int64, userLimit *int64) (model.Service, error) {
+	// A map writes 0 and NULL, which GORM skips in a struct.
+	res := r.db.WithContext(ctx).Model(&model.Service{}).Where("name = ?", name).
+		Updates(map[string]any{"default_org_limit": orgLimit, "default_user_limit": userLimit})
+	if res.Error != nil {
+		return model.Service{}, res.Error
+	}
+	return r.FindServiceByName(ctx, name)
+}
+
+func (r *serviceRepository) ListServices(ctx context.Context) ([]model.Service, error) {
+	var services []model.Service
+	if err := r.db.WithContext(ctx).Order("name").Find(&services).Error; err != nil {
+		return nil, err
+	}
+	return services, nil
+}
+
+func (r *serviceRepository) ListServiceAPIKeys(ctx context.Context) ([]model.ServiceAPIKey, error) {
+	var keys []model.ServiceAPIKey
+	if err := r.db.WithContext(ctx).Order("created_at DESC, id DESC").Find(&keys).Error; err != nil {
+		return nil, err
+	}
+	return keys, nil
 }
 
 func (r *serviceRepository) CreateServiceAPIKey(ctx context.Context, k model.ServiceAPIKey) (model.ServiceAPIKey, error) {

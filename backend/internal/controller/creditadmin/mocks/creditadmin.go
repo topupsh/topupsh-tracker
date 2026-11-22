@@ -50,6 +50,51 @@ func (mr *MockControllerMockRecorder) CreateGrant(ctx, rq interface{}) *gomock.C
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateGrant", reflect.TypeOf((*MockController)(nil).CreateGrant), ctx, rq)
 }
 
+// ListOrgUsage mocks base method.
+func (m *MockController) ListOrgUsage(ctx context.Context, rq *entity.ListOrgUsageRequest) (*entity.ListOrgUsageResponse, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListOrgUsage", ctx, rq)
+	ret0, _ := ret[0].(*entity.ListOrgUsageResponse)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListOrgUsage indicates an expected call of ListOrgUsage.
+func (mr *MockControllerMockRecorder) ListOrgUsage(ctx, rq interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListOrgUsage", reflect.TypeOf((*MockController)(nil).ListOrgUsage), ctx, rq)
+}
+
+// ListServices mocks base method.
+func (m *MockController) ListServices(ctx context.Context, rq *entity.ListServicesRequest) (*entity.ListServicesResponse, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListServices", ctx, rq)
+	ret0, _ := ret[0].(*entity.ListServicesResponse)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListServices indicates an expected call of ListServices.
+func (mr *MockControllerMockRecorder) ListServices(ctx, rq interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListServices", reflect.TypeOf((*MockController)(nil).ListServices), ctx, rq)
+}
+
+// ListUserUsage mocks base method.
+func (m *MockController) ListUserUsage(ctx context.Context, rq *entity.ListUserUsageRequest) (*entity.ListUserUsageResponse, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListUserUsage", ctx, rq)
+	ret0, _ := ret[0].(*entity.ListUserUsageResponse)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListUserUsage indicates an expected call of ListUserUsage.
+func (mr *MockControllerMockRecorder) ListUserUsage(ctx, rq interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListUserUsage", reflect.TypeOf((*MockController)(nil).ListUserUsage), ctx, rq)
+}
+
 // SetOrgLimits mocks base method.
 func (m *MockController) SetOrgLimits(ctx context.Context, rq *entity.SetOrgLimitsRequest) (*entity.SetOrgLimitsResponse, error) {
 	m.ctrl.T.Helper()
@@ -63,6 +108,21 @@ func (m *MockController) SetOrgLimits(ctx context.Context, rq *entity.SetOrgLimi
 func (mr *MockControllerMockRecorder) SetOrgLimits(ctx, rq interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetOrgLimits", reflect.TypeOf((*MockController)(nil).SetOrgLimits), ctx, rq)
+}
+
+// SetServiceDefaults mocks base method.
+func (m *MockController) SetServiceDefaults(ctx context.Context, rq *entity.SetServiceDefaultsRequest) (*entity.SetServiceDefaultsResponse, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SetServiceDefaults", ctx, rq)
+	ret0, _ := ret[0].(*entity.SetServiceDefaultsResponse)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// SetServiceDefaults indicates an expected call of SetServiceDefaults.
+func (mr *MockControllerMockRecorder) SetServiceDefaults(ctx, rq interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetServiceDefaults", reflect.TypeOf((*MockController)(nil).SetServiceDefaults), ctx, rq)
 }
 
 // SetServiceEnabled mocks base method.

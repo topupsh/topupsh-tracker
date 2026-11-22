@@ -42,6 +42,10 @@ func TestCreditAdmin_RequireRoot(t *testing.T) {
 		{http.MethodPut, "/api/v1/services/mesher/enabled"},
 		{http.MethodPut, "/api/v1/orgs/o1/limits"},
 		{http.MethodPost, "/api/v1/grants"},
+		{http.MethodGet, "/api/v1/services"},
+		{http.MethodPut, "/api/v1/services/mesher/defaults"},
+		{http.MethodGet, "/api/v1/services/mesher/orgs"},
+		{http.MethodGet, "/api/v1/services/mesher/users"},
 	} {
 		res, _ := send(t, app, rq.method, rq.target, `{}`)
 		assert.Equal(t, http.StatusUnauthorized, res.StatusCode, rq.target)
@@ -60,7 +64,7 @@ func TestCreditAdmin_UpdateServiceEnabled(t *testing.T) {
 		res, body := send(t, app, http.MethodPut, "/api/v1/services/mesher/enabled", `{"enabled":true}`, _rootCookie)
 		assert.Equal(t, http.StatusOK, res.StatusCode)
 		assert.Equal(t, fiber.MIMEApplicationJSON, res.Header.Get(fiber.HeaderContentType))
-		assert.JSONEq(t, `{"name":"mesher","enabled":true}`, body)
+		assert.JSONEq(t, `{"name":"mesher","enabled":true,"defaultOrgLimit":0,"defaultUserLimit":null}`, body)
 	})
 	t.Run("bad request", func(t *testing.T) {
 		app, _, setup := newCreditAdminApp(t)
@@ -167,4 +171,140 @@ func TestCreditAdmin_CreateGrant(t *testing.T) {
 		assert.Equal(t, http.StatusInternalServerError, res.StatusCode)
 		assert.JSONEq(t, `{"error":"failed to create grant"}`, body)
 	})
+}
+
+func TestCreditAdmin_UpdateServiceDefaults(t *testing.T) {
+	t.Run("ok", func(t *testing.T) {
+		app, credits, setup := newCreditAdminApp(t)
+		asRoot(setup)
+		five := int64(5)
+		credits.EXPECT().SetServiceDefaults(gomock.Any(), &entity.SetServiceDefaultsRequest{ServiceName: "mesher", OrgLimit: 100, UserLimit: &five}).
+			Return(&entity.SetServiceDefaultsResponse{Service: entity.Service{Name: "mesher", DefaultOrgLimit: 100, DefaultUserLimit: &five}}, nil)
+		res, body := send(t, app, http.MethodPut, "/api/v1/services/mesher/defaults", `{"orgLimit":100,"userLimit":5}`, _rootCookie)
+		assert.Equal(t, http.StatusOK, res.StatusCode)
+		assert.JSONEq(t, `{"name":"mesher","enabled":false,"defaultOrgLimit":100,"defaultUserLimit":5}`, body)
+	})
+	t.Run("bad request", func(t *testing.T) {
+		app, _, setup := newCreditAdminApp(t)
+		asRoot(setup)
+		res, _ := send(t, app, http.MethodPut, "/api/v1/services/mesher/defaults", `{"userLimit":5}`, _rootCookie)
+		assert.Equal(t, http.StatusBadRequest, res.StatusCode)
+	})
+	t.Run("invalid limit", func(t *testing.T) {
+		app, credits, setup := newCreditAdminApp(t)
+		asRoot(setup)
+		credits.EXPECT().SetServiceDefaults(gomock.Any(), gomock.Any()).Return(nil, creditadminctrl.ErrInvalidLimit)
+		res, _ := send(t, app, http.MethodPut, "/api/v1/services/mesher/defaults", `{"orgLimit":-1}`, _rootCookie)
+		assert.Equal(t, http.StatusBadRequest, res.StatusCode)
+	})
+	t.Run("server error", func(t *testing.T) {
+		app, credits, setup := newCreditAdminApp(t)
+		asRoot(setup)
+		credits.EXPECT().SetServiceDefaults(gomock.Any(), gomock.Any()).Return(nil, errBoom)
+		res, body := send(t, app, http.MethodPut, "/api/v1/services/mesher/defaults", `{"orgLimit":1}`, _rootCookie)
+		assert.Equal(t, http.StatusInternalServerError, res.StatusCode)
+		assert.JSONEq(t, `{"error":"failed to update defaults"}`, body)
+	})
+}
+
+func TestCreditAdmin_ListServices(t *testing.T) {
+	t.Run("ok", func(t *testing.T) {
+		app, credits, setup := newCreditAdminApp(t)
+		asRoot(setup)
+		at := time.Date(2026, 11, 21, 12, 0, 0, 0, time.UTC)
+		credits.EXPECT().ListServices(gomock.Any(), &entity.ListServicesRequest{}).Return(&entity.ListServicesResponse{
+			Services: []entity.ServiceWithKeys{{
+				Service: entity.Service{Name: "mesher", Enabled: true, CreatedAt: at},
+				APIKeys: []entity.ServiceAPIKey{{ID: 1, Prefix: "tpk_abcd", CreatedAt: at, RevokedAt: &at}},
+			}},
+		}, nil)
+		res, body := send(t, app, http.MethodGet, "/api/v1/services", ``, _rootCookie)
+		assert.Equal(t, http.StatusOK, res.StatusCode)
+		assert.JSONEq(t, `{"services":[{"name":"mesher","enabled":true,"defaultOrgLimit":0,"defaultUserLimit":null,
+			"createdAt":"2026-11-21T12:00:00Z","apiKeys":[{"id":"`+mapper.FromIDToBase62(1)+`","service":"mesher","prefix":"tpk_abcd",
+			"createdAt":"2026-11-21T12:00:00Z","revokedAt":"2026-11-21T12:00:00Z"}]}]}`, body)
+	})
+	t.Run("server error", func(t *testing.T) {
+		app, credits, setup := newCreditAdminApp(t)
+		asRoot(setup)
+		credits.EXPECT().ListServices(gomock.Any(), gomock.Any()).Return(nil, errBoom)
+		res, body := send(t, app, http.MethodGet, "/api/v1/services", ``, _rootCookie)
+		assert.Equal(t, http.StatusInternalServerError, res.StatusCode)
+		assert.JSONEq(t, `{"error":"failed to list services"}`, body)
+	})
+}
+
+func TestCreditAdmin_ListOrgUsage(t *testing.T) {
+	t.Run("ok", func(t *testing.T) {
+		app, credits, setup := newCreditAdminApp(t)
+		asRoot(setup)
+		five := int64(5)
+		credits.EXPECT().ListOrgUsage(gomock.Any(), &entity.ListOrgUsageRequest{ServiceName: "mesher"}).Return(&entity.ListOrgUsageResponse{
+			Service: entity.Service{Name: "mesher"},
+			Orgs: []entity.OrgUsage{
+				{OrgLimit: entity.OrgLimit{OrgID: "o1", MonthlyLimit: 100, UserLimit: &five}, Custom: true, Used: 7},
+			},
+		}, nil)
+		res, body := send(t, app, http.MethodGet, "/api/v1/services/mesher/orgs", ``, _rootCookie)
+		assert.Equal(t, http.StatusOK, res.StatusCode)
+		assert.JSONEq(t, `{"service":"mesher","orgs":[{"org":"o1","orgLimit":100,"userLimit":5,"custom":true,"used":7}]}`, body)
+	})
+	t.Run("not found", func(t *testing.T) {
+		app, credits, setup := newCreditAdminApp(t)
+		asRoot(setup)
+		credits.EXPECT().ListOrgUsage(gomock.Any(), gomock.Any()).Return(nil, creditadminctrl.ErrServiceNotFound)
+		res, _ := send(t, app, http.MethodGet, "/api/v1/services/nope/orgs", ``, _rootCookie)
+		assert.Equal(t, http.StatusNotFound, res.StatusCode)
+	})
+	t.Run("server error", func(t *testing.T) {
+		app, credits, setup := newCreditAdminApp(t)
+		asRoot(setup)
+		credits.EXPECT().ListOrgUsage(gomock.Any(), gomock.Any()).Return(nil, errBoom)
+		res, body := send(t, app, http.MethodGet, "/api/v1/services/mesher/orgs", ``, _rootCookie)
+		assert.Equal(t, http.StatusInternalServerError, res.StatusCode)
+		assert.JSONEq(t, `{"error":"failed to list orgs"}`, body)
+	})
+}
+
+func TestCreditAdmin_ListUserUsage(t *testing.T) {
+	t.Run("ok", func(t *testing.T) {
+		app, credits, setup := newCreditAdminApp(t)
+		asRoot(setup)
+		credits.EXPECT().ListUserUsage(gomock.Any(), &entity.ListUserUsageRequest{ServiceName: "mesher", OrgID: "o1"}).Return(&entity.ListUserUsageResponse{
+			Service:   entity.Service{Name: "mesher"},
+			Users:     []entity.UserUsage{{OrgID: "o1", UserID: "u1", MonthlyAllowance: 10, MonthlyUsed: 3, Grants: 5, Balance: 12}},
+			Truncated: true,
+		}, nil)
+		res, body := send(t, app, http.MethodGet, "/api/v1/services/mesher/users?org=o1", ``, _rootCookie)
+		assert.Equal(t, http.StatusOK, res.StatusCode)
+		assert.JSONEq(t, `{"service":"mesher","truncated":true,"users":[{"org":"o1","user":"u1","monthlyAllowance":10,"monthlyUsed":3,"grants":5,"balance":12}]}`, body)
+	})
+	t.Run("invalid org", func(t *testing.T) {
+		app, credits, setup := newCreditAdminApp(t)
+		asRoot(setup)
+		credits.EXPECT().ListUserUsage(gomock.Any(), gomock.Any()).Return(nil, creditadminctrl.ErrInvalidOrg)
+		res, _ := send(t, app, http.MethodGet, "/api/v1/services/mesher/users", ``, _rootCookie)
+		assert.Equal(t, http.StatusBadRequest, res.StatusCode)
+	})
+	t.Run("server error", func(t *testing.T) {
+		app, credits, setup := newCreditAdminApp(t)
+		asRoot(setup)
+		credits.EXPECT().ListUserUsage(gomock.Any(), gomock.Any()).Return(nil, errBoom)
+		res, body := send(t, app, http.MethodGet, "/api/v1/services/mesher/users", ``, _rootCookie)
+		assert.Equal(t, http.StatusInternalServerError, res.StatusCode)
+		assert.JSONEq(t, `{"error":"failed to list users"}`, body)
+	})
+}
+
+func TestCreditAdmin_NilRequests(t *testing.T) {
+	// The router never calls these without a service name; mounted bare,
+	// the handlers refuse the request.
+	h := &CreditAdmin{}
+	app := fiber.New()
+	app.Get("/orgs", h.ListOrgUsage)
+	app.Get("/users", h.ListUserUsage)
+	for _, target := range []string{"/orgs", "/users"} {
+		res, _ := send(t, app, http.MethodGet, target, ``)
+		assert.Equal(t, http.StatusBadRequest, res.StatusCode, target)
+	}
 }

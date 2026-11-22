@@ -317,7 +317,7 @@ func (l *ledger) monthlyBucket(now time.Time) (model.CreditBucket, int64, error)
 // its users gets: the user limit, or the org limit when users are uncapped,
 // and never more than the org limit.
 func (l *ledger) limits() (int64, int64, error) {
-	ol, err := findOrgLimit(l.tx, l.charge.ServiceID, l.charge.OrgID)
+	ol, err := findOrgLimit(l.tx, l.service, l.charge.OrgID)
 	if err != nil {
 		return 0, 0, err
 	}

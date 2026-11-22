@@ -127,4 +127,74 @@ func TestServiceRepository_DBErrors(t *testing.T) {
 	err = repo.RevokeServiceAPIKey(ctx, 1, 1, time.Now())
 	assert.Error(t, err)
 	assert.NotErrorIs(t, err, ErrNotFound)
+
+	_, err = repo.SetServiceDefaults(ctx, "mesher", 1, nil)
+	assert.Error(t, err)
+	assert.NotErrorIs(t, err, ErrNotFound)
+
+	_, err = repo.ListServices(ctx)
+	assert.Error(t, err)
+
+	_, err = repo.ListServiceAPIKeys(ctx)
+	assert.Error(t, err)
+}
+
+func TestServiceRepository_SetServiceDefaults(t *testing.T) {
+	ctx := context.Background()
+	repo := NewServiceRepository(newServiceDB(t))
+	_, err := repo.SetServiceDefaults(ctx, "mesher", 1, nil)
+	assert.ErrorIs(t, err, ErrNotFound)
+
+	s, err := repo.FindOrCreateService(ctx, model.Service{ID: 1, Name: "mesher"})
+	require.NoError(t, err)
+	assert.Zero(t, s.DefaultOrgLimit, "a new service's org limit defaults to 0")
+	assert.Nil(t, s.DefaultUserLimit, "and its users are uncapped")
+
+	five := int64(5)
+	s, err = repo.SetServiceDefaults(ctx, "mesher", 100, &five)
+	require.NoError(t, err)
+	assert.Equal(t, int64(100), s.DefaultOrgLimit)
+	require.NotNil(t, s.DefaultUserLimit)
+	assert.Equal(t, int64(5), *s.DefaultUserLimit)
+
+	s, err = repo.SetServiceDefaults(ctx, "mesher", 0, nil)
+	require.NoError(t, err)
+	assert.Zero(t, s.DefaultOrgLimit, "0 is written, not skipped as a zero value")
+	assert.Nil(t, s.DefaultUserLimit, "users become uncapped")
+}
+
+func TestServiceRepository_List(t *testing.T) {
+	ctx := context.Background()
+	repo := NewServiceRepository(newServiceDB(t))
+	services, err := repo.ListServices(ctx)
+	require.NoError(t, err)
+	assert.Empty(t, services)
+
+	_, err = repo.FindOrCreateService(ctx, model.Service{ID: 2, Name: "tmphost"})
+	require.NoError(t, err)
+	_, err = repo.FindOrCreateService(ctx, model.Service{ID: 1, Name: "mesher"})
+	require.NoError(t, err)
+	at := time.Date(2026, 11, 21, 12, 0, 0, 0, time.UTC)
+	for _, k := range []model.ServiceAPIKey{
+		{ID: 10, ServiceID: 1, Prefix: "tpk_a", KeyHash: "a", CreatedAt: at},
+		{ID: 11, ServiceID: 2, Prefix: "tpk_b", KeyHash: "b", CreatedAt: at.Add(time.Hour)},
+		{ID: 12, ServiceID: 1, Prefix: "tpk_c", KeyHash: "c", CreatedAt: at.Add(time.Hour)},
+	} {
+		_, err = repo.CreateServiceAPIKey(ctx, k)
+		require.NoError(t, err)
+	}
+
+	services, err = repo.ListServices(ctx)
+	require.NoError(t, err)
+	require.Len(t, services, 2)
+	assert.Equal(t, "mesher", services[0].Name, "ordered by name")
+	assert.Equal(t, "tmphost", services[1].Name)
+
+	keys, err := repo.ListServiceAPIKeys(ctx)
+	require.NoError(t, err)
+	var got []int64
+	for _, k := range keys {
+		got = append(got, k.ID)
+	}
+	assert.Equal(t, []int64{12, 11, 10}, got, "newest first")
 }

@@ -33,14 +33,24 @@ func FromHTTPRequestToCreateServiceAPIKeyRequestEntity(c fiber.Ctx) *entity.Crea
 // the key itself included.
 func FromCreateServiceAPIKeyResponseEntityToHTTPResponse(rs *entity.CreateServiceAPIKeyResponse) []byte {
 	return marshal(view.CreateServiceAPIKeyResponse{
-		APIKey: view.ServiceAPIKey{
-			ID:        FromIDToBase62(rs.APIKey.ID),
-			Service:   rs.Service.Name,
-			Prefix:    rs.APIKey.Prefix,
-			CreatedAt: rs.APIKey.CreatedAt.UTC().Format(time.RFC3339),
-		},
-		Key: rs.Key,
+		APIKey: FromServiceAPIKeyEntityToServiceAPIKeyView(rs.Service.Name, rs.APIKey),
+		Key:    rs.Key,
 	})
+}
+
+// FromServiceAPIKeyEntityToServiceAPIKeyView maps a key of the service
+// named service to its JSON form, without the key itself.
+func FromServiceAPIKeyEntityToServiceAPIKeyView(service string, k entity.ServiceAPIKey) view.ServiceAPIKey {
+	v := view.ServiceAPIKey{
+		ID:        FromIDToBase62(k.ID),
+		Service:   service,
+		Prefix:    k.Prefix,
+		CreatedAt: k.CreatedAt.UTC().Format(time.RFC3339),
+	}
+	if k.RevokedAt != nil {
+		v.RevokedAt = k.RevokedAt.UTC().Format(time.RFC3339)
+	}
+	return v
 }
 
 // FromHTTPRequestToRevokeServiceAPIKeyRequestEntity reads the service and

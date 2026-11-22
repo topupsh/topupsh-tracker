@@ -48,6 +48,16 @@ func TestBalanceRepository_GetBalance(t *testing.T) {
 		assert.Empty(t, b.Buckets)
 	})
 
+	t.Run("service defaults", func(t *testing.T) {
+		db, repo := newBalanceDB(t)
+		five := int64(5)
+		_, err := NewServiceRepository(db).SetServiceDefaults(ctx, "mesher", 100, &five)
+		require.NoError(t, err)
+		b, err := repo.GetBalance(ctx, 1, "o1", "u1", _readAt)
+		require.NoError(t, err)
+		assert.Equal(t, model.OrgLimit{ServiceID: 1, OrgID: "o1", MonthlyLimit: 100, UserLimit: &five}, b.OrgLimit)
+	})
+
 	t.Run("buckets and usage", func(t *testing.T) {
 		db, repo := newBalanceDB(t)
 		five := int64(5)

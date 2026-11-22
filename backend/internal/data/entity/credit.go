@@ -6,8 +6,9 @@ package entity
 
 import "time"
 
-// DefaultOrgMonthlyLimit is the monthly org limit of an org the admin has
-// set none for: nothing can be spent until an admin sets a limit.
+// DefaultOrgMonthlyLimit is a new service's default org limit, the monthly
+// org limit of orgs the admin set none for: nothing can be spent until an
+// admin sets a limit.
 const DefaultOrgMonthlyLimit int64 = 0
 
 // Bucket kinds.
@@ -53,6 +54,12 @@ type (
 		Name      string
 		Enabled   bool
 		CreatedAt time.Time
+		// DefaultOrgLimit is the monthly org limit of orgs the admin set
+		// no limits for.
+		DefaultOrgLimit int64
+		// DefaultUserLimit is the user limit of those orgs; nil means
+		// uncapped.
+		DefaultUserLimit *int64
 	}
 
 	// ServiceAPIKey is a service's API key; only its hash is kept.
