@@ -22,6 +22,7 @@ import (
 	authctrl "github.com/topupsh/topupsh-tracker/backend/internal/controller/auth"
 	chargectrl "github.com/topupsh/topupsh-tracker/backend/internal/controller/charge"
 	creditadminctrl "github.com/topupsh/topupsh-tracker/backend/internal/controller/creditadmin"
+	expiryctrl "github.com/topupsh/topupsh-tracker/backend/internal/controller/expiry"
 	servicekeyctrl "github.com/topupsh/topupsh-tracker/backend/internal/controller/servicekey"
 	setupctrl "github.com/topupsh/topupsh-tracker/backend/internal/controller/setup"
 	"github.com/topupsh/topupsh-tracker/backend/internal/data/entity"
@@ -224,6 +225,11 @@ func New(cfg Config, web fs.FS) (*App, error) {
 		db:        db,
 		scheduler: scheduler.New(),
 	}
+	// The spec is a valid constant, so AddFunc cannot fail.
+	_ = a.scheduler.AddFunc(expiryctrl.Spec, expiryJob(expiryctrl.New(expiryctrl.Params{
+		Expiry: repository.NewExpiryRepository(db),
+		IDGen:  ids,
+	})))
 	if cfg.TLS.Enabled {
 		a.setupTLS(cfg, enc, h)
 	}

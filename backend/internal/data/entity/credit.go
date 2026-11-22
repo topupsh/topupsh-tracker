@@ -28,6 +28,9 @@ const (
 	LedgerKindExpiry LedgerKind = "expiry"
 )
 
+// ActorScheduler is the ledger actor of the scheduled credit jobs.
+const ActorScheduler = "scheduler"
+
 // Charge refusals.
 const (
 	RefusalOrgLimit  Refusal = "org_limit"
