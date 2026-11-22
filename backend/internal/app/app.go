@@ -20,6 +20,7 @@ import (
 
 	adminctrl "github.com/topupsh/topupsh-tracker/backend/internal/controller/admin"
 	authctrl "github.com/topupsh/topupsh-tracker/backend/internal/controller/auth"
+	creditadminctrl "github.com/topupsh/topupsh-tracker/backend/internal/controller/creditadmin"
 	servicekeyctrl "github.com/topupsh/topupsh-tracker/backend/internal/controller/servicekey"
 	setupctrl "github.com/topupsh/topupsh-tracker/backend/internal/controller/setup"
 	"github.com/topupsh/topupsh-tracker/backend/internal/data/entity"
@@ -186,6 +187,7 @@ func New(cfg Config, web fs.FS) (*App, error) {
 	})
 
 	h := newHosts(cfg.App.BaseURL)
+	services := repository.NewServiceRepository(db)
 	f := fiber.New(fiberConfig(cfg.App))
 	f.Use(recover.New())
 	api.New(api.Params{
@@ -195,7 +197,12 @@ func New(cfg Config, web fs.FS) (*App, error) {
 		Setup:  setup,
 		Admin:  admin,
 		ServiceKeys: servicekeyctrl.New(servicekeyctrl.Params{
-			Services: repository.NewServiceRepository(db),
+			Services: services,
+			IDGen:    ids,
+		}),
+		CreditAdmin: creditadminctrl.New(creditadminctrl.Params{
+			Services: services,
+			Credits:  repository.NewCreditRepository(db),
 			IDGen:    ids,
 		}),
 		AllowedOrigins: setup.AllowedOrigins,

@@ -25,6 +25,9 @@ type (
 		// FindOrCreateService returns the service named s.Name, creating s
 		// when there is none.
 		FindOrCreateService(ctx context.Context, s model.Service) (model.Service, error)
+		// SetServiceEnabled switches credit limiting on or off for the
+		// service named name. It returns ErrNotFound for an unknown service.
+		SetServiceEnabled(ctx context.Context, name string, enabled bool) (model.Service, error)
 		// CreateServiceAPIKey stores a new key.
 		CreateServiceAPIKey(ctx context.Context, k model.ServiceAPIKey) (model.ServiceAPIKey, error)
 		// RevokeServiceAPIKey revokes the key id of the service serviceID
@@ -61,6 +64,14 @@ func (r *serviceRepository) FindOrCreateService(ctx context.Context, s model.Ser
 		return model.Service{}, err
 	}
 	return r.FindServiceByName(ctx, s.Name)
+}
+
+func (r *serviceRepository) SetServiceEnabled(ctx context.Context, name string, enabled bool) (model.Service, error) {
+	res := r.db.WithContext(ctx).Model(&model.Service{}).Where("name = ?", name).Update("enabled", enabled)
+	if res.Error != nil {
+		return model.Service{}, res.Error
+	}
+	return r.FindServiceByName(ctx, name)
 }
 
 func (r *serviceRepository) CreateServiceAPIKey(ctx context.Context, k model.ServiceAPIKey) (model.ServiceAPIKey, error) {

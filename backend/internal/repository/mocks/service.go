@@ -109,3 +109,18 @@ func (mr *MockServiceRepositoryMockRecorder) RevokeServiceAPIKey(ctx, serviceID,
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RevokeServiceAPIKey", reflect.TypeOf((*MockServiceRepository)(nil).RevokeServiceAPIKey), ctx, serviceID, id, at)
 }
+
+// SetServiceEnabled mocks base method.
+func (m *MockServiceRepository) SetServiceEnabled(ctx context.Context, name string, enabled bool) (model.Service, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SetServiceEnabled", ctx, name, enabled)
+	ret0, _ := ret[0].(model.Service)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// SetServiceEnabled indicates an expected call of SetServiceEnabled.
+func (mr *MockServiceRepositoryMockRecorder) SetServiceEnabled(ctx, name, enabled interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetServiceEnabled", reflect.TypeOf((*MockServiceRepository)(nil).SetServiceEnabled), ctx, name, enabled)
+}
