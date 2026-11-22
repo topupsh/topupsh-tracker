@@ -10,6 +10,11 @@ import AdminOverview from '../components/AdminOverview.vue'
 import AdminUserDetail from '../components/AdminUserDetail.vue'
 import AdminUsers from '../components/AdminUsers.vue'
 import BrandLogo from '../components/BrandLogo.vue'
+import CreditLedger from '../components/CreditLedger.vue'
+import CreditOrgs from '../components/CreditOrgs.vue'
+import CreditServicePicker from '../components/CreditServicePicker.vue'
+import CreditServices from '../components/CreditServices.vue'
+import CreditUsage from '../components/CreditUsage.vue'
 import { fetchSettings, setupLogin, setupLogout } from '../api'
 import { useToasts } from '../composables/useToasts'
 
@@ -29,6 +34,15 @@ const SECTIONS = [
     label: 'Users',
     icon: 'M15 19.128a9.38 9.38 0 0 0 2.625.372 9.337 9.337 0 0 0 4.121-.952 4.125 4.125 0 0 0-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 0 1 8.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0 1 11.964-3.07M12 6.375a3.375 3.375 0 1 1-6.75 0 3.375 3.375 0 0 1 6.75 0zm8.25 2.25a2.625 2.625 0 1 1-5.25 0 2.625 2.625 0 0 1 5.25 0z',
   },
+  // Credits: services, org limits, user usage and grants, the ledger.
+  {
+    id: 'services',
+    label: 'Services',
+    icon: 'M15.75 5.25a3 3 0 0 1 3 3m3 0a6 6 0 0 1-7.029 5.912c-.563-.097-1.159.026-1.563.43L10.5 17.25H8.25v2.25H6v2.25H2.25v-2.818c0-.597.237-1.17.659-1.591l6.499-6.499c.404-.404.527-1 .43-1.563A6 6 0 1 1 21.75 8.25z',
+  },
+  { id: 'limits', label: 'Org limits', icon: 'M10.5 6h9.75M10.5 6a1.5 1.5 0 1 1-3 0m3 0a1.5 1.5 0 1 0-3 0M3.75 6H7.5m3 12h9.75m-9.75 0a1.5 1.5 0 0 1-3 0m3 0a1.5 1.5 0 0 0-3 0m-3.75 0H7.5m9-6h3.75m-3.75 0a1.5 1.5 0 0 1-3 0m3 0a1.5 1.5 0 0 0-3 0m-9.75 0h9.75' },
+  { id: 'usage', label: 'Usage & grants', icon: 'M20.25 6.375c0 2.278-3.694 4.125-8.25 4.125S3.75 8.653 3.75 6.375m16.5 0c0-2.278-3.694-4.125-8.25-4.125S3.75 4.097 3.75 6.375m16.5 0v11.25c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125V6.375m16.5 5.625c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125' },
+  { id: 'ledger', label: 'Ledger', icon: 'M8.25 6.75h12M8.25 12h12m-12 5.25h12M3.75 6.75h.007v.008H3.75V6.75zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0zM3.75 12h.007v.008H3.75V12zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0zm-.375 5.25h.007v.008H3.75v-.008zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0z' },
 ]
 
 const { notifyError } = useToasts()
@@ -42,6 +56,8 @@ const busy = ref(false)
 const section = ref(SECTIONS[0].id)
 // The user whose page is open in the users section; empty for the list.
 const userId = ref('')
+// The service the org limits and usage sections show, kept across both.
+const creditService = ref('')
 
 async function refresh() {
   // There is no admin state to load: the settings call only tells whether
@@ -140,7 +156,7 @@ onMounted(refresh)
         <BrandLogo tile class="w-9 h-9" />
         <div class="grow min-w-0">
           <h1 class="text-lg font-bold text-gray-900 dark:text-zinc-100 tracking-tight">Admin</h1>
-          <p class="text-xs text-gray-500 dark:text-zinc-400">Manage topupsh tracker accounts. Only root can see this page.</p>
+          <p class="text-xs text-gray-500 dark:text-zinc-400">Manage topupsh tracker accounts and credits. Only root can see this page.</p>
         </div>
         <button type="button" :class="SECONDARY" data-test="admin-logout" @click="logout">Sign out</button>
       </header>
@@ -173,6 +189,15 @@ onMounted(refresh)
 
         <div class="flex-1 min-w-0">
           <AdminOverview v-if="section === 'overview'" @error="onError" />
+          <CreditServices v-else-if="section === 'services'" @error="onError" />
+          <div v-else-if="section === 'limits' || section === 'usage'" class="flex flex-col gap-4">
+            <CreditServicePicker v-model="creditService" @error="onError" />
+            <template v-if="creditService">
+              <CreditOrgs v-if="section === 'limits'" :key="`limits-${creditService}`" :service="creditService" @error="onError" />
+              <CreditUsage v-else :key="`usage-${creditService}`" :service="creditService" @error="onError" />
+            </template>
+          </div>
+          <CreditLedger v-else-if="section === 'ledger'" @error="onError" />
           <AdminUserDetail
             v-else-if="section === 'users' && userId"
             :id="userId"

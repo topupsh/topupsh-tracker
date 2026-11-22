@@ -110,9 +110,13 @@ func New(p Params) {
 	root := AuthenticateRoot(p.Setup)
 	r.Get("/setup/settings", root, setup.Get)
 	r.Put("/setup/settings", root, setup.Update)
+	r.Get("/services", root, creditAdmin.ListServices)
 	r.Post("/services/:service/keys", root, serviceKey.Create)
 	r.Delete("/services/:service/keys/:id", root, serviceKey.Delete)
 	r.Put("/services/:service/enabled", root, creditAdmin.UpdateServiceEnabled)
+	r.Put("/services/:service/defaults", root, creditAdmin.UpdateServiceDefaults)
+	r.Get("/services/:service/orgs", root, creditAdmin.ListOrgUsage)
+	r.Get("/services/:service/users", root, creditAdmin.ListUserUsage)
 	r.Put("/orgs/:org/limits", root, creditAdmin.UpdateOrgLimits)
 	r.Post("/grants", root, creditAdmin.CreateGrant)
 

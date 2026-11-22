@@ -154,6 +154,35 @@ paths:
         "500":
           $ref: "#/components/responses/ServerError"
 
+  /api/v1/services:
+    get:
+      tags: [Services]
+      operationId: listServices
+      summary: List the services
+      description: |
+        Every service, ordered by name, with its credit switch, its default
+        limits and its API keys (newest first, revoked ones included; never
+        the keys themselves).
+      security:
+        - root: []
+      responses:
+        "200":
+          description: The services.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [services]
+                properties:
+                  services:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/ServiceDetail"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/ServerError"
+
   /api/v1/services/{service}/keys:
     post:
       tags: [Services]
@@ -259,6 +288,130 @@ paths:
         "500":
           $ref: "#/components/responses/ServerError"
 
+  /api/v1/services/{service}/defaults:
+    put:
+      tags: [Credits]
+      operationId: setServiceDefaults
+      summary: Set a service's default limits
+      description: |
+        The default limits apply to every org of the service the admin
+        set no limits for. A new service's default org limit is 0 and its
+        users are uncapped.
+      security:
+        - root: []
+      parameters:
+        - $ref: "#/components/parameters/Service"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [orgLimit]
+              properties:
+                orgLimit:
+                  type: integer
+                  format: int64
+                  minimum: 0
+                userLimit:
+                  type: [integer, "null"]
+                  format: int64
+                  minimum: 0
+                  description: Omitted or null for uncapped users.
+      responses:
+        "200":
+          description: The service after the change.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreditService"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/ServerError"
+
+  /api/v1/services/{service}/orgs:
+    get:
+      tags: [Credits]
+      operationId: listOrgUsage
+      summary: List a service's orgs and their usage
+      description: |
+        The orgs with limits of their own or monthly credits spent this
+        UTC month, ordered by org, with the limits that apply to them.
+      security:
+        - root: []
+      parameters:
+        - $ref: "#/components/parameters/Service"
+      responses:
+        "200":
+          description: The orgs.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [service, orgs]
+                properties:
+                  service:
+                    type: string
+                  orgs:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/AdminOrgUsage"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/ServerError"
+
+  /api/v1/services/{service}/users:
+    get:
+      tags: [Credits]
+      operationId: listUserUsage
+      summary: List a service's users and their usage
+      description: |
+        Up to 500 users with unexpired credits, ordered by org and user,
+        with what they spent this UTC month.
+      security:
+        - root: []
+      parameters:
+        - $ref: "#/components/parameters/Service"
+        - name: org
+          in: query
+          description: Only this org's users.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: The users.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [service, users, truncated]
+                properties:
+                  service:
+                    type: string
+                  users:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/UserUsage"
+                  truncated:
+                    type: boolean
+                    description: True when more users have credits than are listed.
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/ServerError"
+
   /api/v1/orgs/{org}/limits:
     put:
       tags: [Credits]
@@ -267,7 +420,7 @@ paths:
       description: |
         Replaces the org's limits for the service. `orgLimit` is the
         credits the whole org may use in a month; omitted or null, it is
-        the default, 0, so the org can't spend until a limit is set.
+        the service's default org limit (0 until an admin changes it).
         `userLimit` is the credits each user of the org may use in a
         month; omitted or null, users are uncapped.
       security:
@@ -861,15 +1014,86 @@ components:
         createdAt:
           type: string
           format: date-time
+        revokedAt:
+          type: string
+          format: date-time
+          description: Set once the key is revoked.
 
     CreditService:
       type: object
-      required: [name, enabled]
+      required: [name, enabled, defaultOrgLimit, defaultUserLimit]
       properties:
         name:
           type: string
         enabled:
           type: boolean
+        defaultOrgLimit:
+          type: integer
+          format: int64
+          description: The monthly org limit of orgs without limits of their own.
+        defaultUserLimit:
+          type: [integer, "null"]
+          format: int64
+          description: The user limit of those orgs; null when uncapped.
+
+    ServiceDetail:
+      allOf:
+        - $ref: "#/components/schemas/CreditService"
+        - type: object
+          required: [createdAt, apiKeys]
+          properties:
+            createdAt:
+              type: string
+              format: date-time
+            apiKeys:
+              type: array
+              items:
+                $ref: "#/components/schemas/ServiceApiKey"
+
+    AdminOrgUsage:
+      type: object
+      required: [org, orgLimit, userLimit, custom, used]
+      properties:
+        org:
+          type: string
+        orgLimit:
+          type: integer
+          format: int64
+        userLimit:
+          type: [integer, "null"]
+          format: int64
+          description: Null when users are uncapped.
+        custom:
+          type: boolean
+          description: False when the service's default limits apply.
+        used:
+          type: integer
+          format: int64
+          description: Monthly credits the org's users spent this UTC month.
+
+    UserUsage:
+      type: object
+      required: [org, user, monthlyAllowance, monthlyUsed, grants, balance]
+      properties:
+        org:
+          type: string
+        user:
+          type: string
+        monthlyAllowance:
+          type: integer
+          format: int64
+          description: The user's monthly credits under the current limits.
+        monthlyUsed:
+          type: integer
+          format: int64
+        grants:
+          type: integer
+          format: int64
+          description: What is left of the user's unexpired grants.
+        balance:
+          type: integer
+          format: int64
+          description: The user's unexpired credits.
 
     OrgLimits:
       type: object

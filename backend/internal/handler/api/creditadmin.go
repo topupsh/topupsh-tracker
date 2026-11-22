@@ -59,6 +59,54 @@ func (h *CreditAdmin) CreateGrant(c fiber.Ctx) error {
 
 // sendError maps a controller error to its status; anything unexpected is
 // logged and answered with msg.
+// UpdateServiceDefaults sets the limits of the orgs without their own.
+func (h *CreditAdmin) UpdateServiceDefaults(c fiber.Ctx) error {
+	rq := mapper.FromHTTPRequestToSetServiceDefaultsRequestEntity(c)
+	if rq == nil {
+		return fiber.ErrBadRequest
+	}
+	rs, err := h.controller.SetServiceDefaults(c.Context(), rq)
+	if err != nil {
+		return h.sendError(c, err, "failed to update defaults")
+	}
+	return sendJSON(c, fiber.StatusOK, mapper.FromSetServiceDefaultsResponseEntityToHTTPResponse(rs))
+}
+
+// ListServices lists every service with its API keys.
+func (h *CreditAdmin) ListServices(c fiber.Ctx) error {
+	rs, err := h.controller.ListServices(c.Context(), mapper.FromHTTPRequestToListServicesRequestEntity(c))
+	if err != nil {
+		return h.sendError(c, err, "failed to list services")
+	}
+	return sendJSON(c, fiber.StatusOK, mapper.FromListServicesResponseEntityToHTTPResponse(rs))
+}
+
+// ListOrgUsage lists a service's orgs, their limits and usage.
+func (h *CreditAdmin) ListOrgUsage(c fiber.Ctx) error {
+	rq := mapper.FromHTTPRequestToListOrgUsageRequestEntity(c)
+	if rq == nil {
+		return fiber.ErrBadRequest
+	}
+	rs, err := h.controller.ListOrgUsage(c.Context(), rq)
+	if err != nil {
+		return h.sendError(c, err, "failed to list orgs")
+	}
+	return sendJSON(c, fiber.StatusOK, mapper.FromListOrgUsageResponseEntityToHTTPResponse(rs))
+}
+
+// ListUserUsage lists a service's users with credits and their usage.
+func (h *CreditAdmin) ListUserUsage(c fiber.Ctx) error {
+	rq := mapper.FromHTTPRequestToListUserUsageRequestEntity(c)
+	if rq == nil {
+		return fiber.ErrBadRequest
+	}
+	rs, err := h.controller.ListUserUsage(c.Context(), rq)
+	if err != nil {
+		return h.sendError(c, err, "failed to list users")
+	}
+	return sendJSON(c, fiber.StatusOK, mapper.FromListUserUsageResponseEntityToHTTPResponse(rs))
+}
+
 func (h *CreditAdmin) sendError(c fiber.Ctx, err error, msg string) error {
 	switch {
 	case errors.Is(err, creditadminctrl.ErrServiceNotFound):

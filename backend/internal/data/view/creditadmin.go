@@ -5,10 +5,74 @@
 package view
 
 type (
-	// Service is a service and its credit limiting switch.
+	// Service is a service, its credit limiting switch and its default
+	// limits.
 	Service struct {
 		Name    string `json:"name"`
 		Enabled bool   `json:"enabled"`
+		// DefaultOrgLimit is the monthly org limit of orgs without limits
+		// of their own.
+		DefaultOrgLimit int64 `json:"defaultOrgLimit"`
+		// DefaultUserLimit is the user limit of those orgs; null means
+		// uncapped.
+		DefaultUserLimit *int64 `json:"defaultUserLimit"`
+	}
+
+	// ServiceDetail is a service with its API keys, for the admin.
+	ServiceDetail struct {
+		Service
+		CreatedAt string          `json:"createdAt"`
+		APIKeys   []ServiceAPIKey `json:"apiKeys"`
+	}
+
+	// ListServicesResponse is the body of GET /api/v1/services.
+	ListServicesResponse struct {
+		Services []ServiceDetail `json:"services"`
+	}
+
+	// SetServiceDefaultsRequest is the body of PUT
+	// /api/v1/services/{service}/defaults.
+	SetServiceDefaultsRequest struct {
+		OrgLimit *int64 `json:"orgLimit"`
+		// UserLimit is omitted or null for uncapped users.
+		UserLimit *int64 `json:"userLimit"`
+	}
+
+	// AdminOrgUsage is an org's limits and its monthly credits spent this UTC
+	// month.
+	AdminOrgUsage struct {
+		Org       string `json:"org"`
+		OrgLimit  int64  `json:"orgLimit"`
+		UserLimit *int64 `json:"userLimit"`
+		// Custom is false when the service's default limits apply.
+		Custom bool  `json:"custom"`
+		Used   int64 `json:"used"`
+	}
+
+	// ListOrgUsageResponse is the body of GET
+	// /api/v1/services/{service}/orgs.
+	ListOrgUsageResponse struct {
+		Service string          `json:"service"`
+		Orgs    []AdminOrgUsage `json:"orgs"`
+	}
+
+	// UserUsage is a user's credits this UTC month.
+	UserUsage struct {
+		Org              string `json:"org"`
+		User             string `json:"user"`
+		MonthlyAllowance int64  `json:"monthlyAllowance"`
+		MonthlyUsed      int64  `json:"monthlyUsed"`
+		Grants           int64  `json:"grants"`
+		Balance          int64  `json:"balance"`
+	}
+
+	// ListUserUsageResponse is the body of GET
+	// /api/v1/services/{service}/users.
+	ListUserUsageResponse struct {
+		Service string      `json:"service"`
+		Users   []UserUsage `json:"users"`
+		// Truncated is true when more users have credits than are listed.
+		Truncated bool `json:"truncated"`
 	}
 
 	// SetServiceEnabledRequest is the body of PUT

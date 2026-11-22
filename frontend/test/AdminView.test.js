@@ -12,6 +12,10 @@ vi.mock('../src/api', () => ({
   fetchSettings: vi.fn(),
   setupLogin: vi.fn(),
   setupLogout: vi.fn(),
+  listServices: vi.fn(),
+  listOrgUsage: vi.fn(),
+  listUserUsage: vi.fn(),
+  listLedger: vi.fn(),
 }))
 
 import {
@@ -19,6 +23,10 @@ import {
   fetchAdminUser,
   fetchSettings,
   listAdminUsers,
+  listLedger,
+  listOrgUsage,
+  listServices,
+  listUserUsage,
   setupLogin,
   setupLogout,
 } from '../src/api'
@@ -51,6 +59,10 @@ describe('AdminView', () => {
     fetchAdminStats.mockResolvedValue({ users: 0, signups: 0, days: [] })
     listAdminUsers.mockResolvedValue({ users: [USER], next: '' })
     fetchAdminUser.mockResolvedValue(USER)
+    listServices.mockResolvedValue([])
+    listOrgUsage.mockResolvedValue([])
+    listUserUsage.mockResolvedValue({ users: [], truncated: false })
+    listLedger.mockResolvedValue({ entries: [] })
     useToasts().toasts.value = []
   })
   afterEach(() => {
@@ -160,5 +172,38 @@ describe('AdminView', () => {
     await wrapper.find('[data-test="admin-login"]').trigger('submit')
     await flushPromises()
     expect(wrapper.find('[data-test="admin-overview"]').exists()).toBe(true)
+  })
+
+  it('opens the credit sections, sharing the picked service', async () => {
+    const wrapper = await signedIn()
+    await wrapper.find('[data-test="admin-tab-services"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.find('[data-test="credit-services"]').exists()).toBe(true)
+
+    await wrapper.find('[data-test="admin-tab-limits"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.find('[data-test="service-picker-empty"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="credit-orgs"]').exists()).toBe(false)
+
+    // A service created under Services shows up when the picker comes back.
+    const service = (name) => ({ name, enabled: false, defaultOrgLimit: 0, defaultUserLimit: null, createdAt: '2026-11-21T00:00:00Z', apiKeys: [] })
+    listServices.mockResolvedValue([service('mesher'), service('tmphost')])
+    await wrapper.find('[data-test="admin-tab-services"]').trigger('click')
+    await flushPromises()
+    await wrapper.find('[data-test="admin-tab-usage"]').trigger('click')
+    await flushPromises()
+    expect(listUserUsage).toHaveBeenLastCalledWith('mesher', '')
+    await wrapper.find('[data-test="service-picker-select"]').setValue('tmphost')
+    await flushPromises()
+    expect(listUserUsage).toHaveBeenLastCalledWith('tmphost', '')
+
+    await wrapper.find('[data-test="admin-tab-limits"]').trigger('click')
+    await flushPromises()
+    expect(listOrgUsage).toHaveBeenLastCalledWith('tmphost')
+    expect(wrapper.find('[data-test="credit-orgs"]').exists()).toBe(true)
+
+    await wrapper.find('[data-test="admin-tab-ledger"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.find('[data-test="credit-ledger"]').exists()).toBe(true)
   })
 })

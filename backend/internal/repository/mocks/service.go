@@ -96,6 +96,36 @@ func (mr *MockServiceRepositoryMockRecorder) FindServiceByName(ctx, name interfa
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FindServiceByName", reflect.TypeOf((*MockServiceRepository)(nil).FindServiceByName), ctx, name)
 }
 
+// ListServiceAPIKeys mocks base method.
+func (m *MockServiceRepository) ListServiceAPIKeys(ctx context.Context) ([]model.ServiceAPIKey, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListServiceAPIKeys", ctx)
+	ret0, _ := ret[0].([]model.ServiceAPIKey)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListServiceAPIKeys indicates an expected call of ListServiceAPIKeys.
+func (mr *MockServiceRepositoryMockRecorder) ListServiceAPIKeys(ctx interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListServiceAPIKeys", reflect.TypeOf((*MockServiceRepository)(nil).ListServiceAPIKeys), ctx)
+}
+
+// ListServices mocks base method.
+func (m *MockServiceRepository) ListServices(ctx context.Context) ([]model.Service, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListServices", ctx)
+	ret0, _ := ret[0].([]model.Service)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListServices indicates an expected call of ListServices.
+func (mr *MockServiceRepositoryMockRecorder) ListServices(ctx interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListServices", reflect.TypeOf((*MockServiceRepository)(nil).ListServices), ctx)
+}
+
 // RevokeServiceAPIKey mocks base method.
 func (m *MockServiceRepository) RevokeServiceAPIKey(ctx context.Context, serviceID, id int64, at time.Time) error {
 	m.ctrl.T.Helper()
@@ -108,6 +138,21 @@ func (m *MockServiceRepository) RevokeServiceAPIKey(ctx context.Context, service
 func (mr *MockServiceRepositoryMockRecorder) RevokeServiceAPIKey(ctx, serviceID, id, at interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RevokeServiceAPIKey", reflect.TypeOf((*MockServiceRepository)(nil).RevokeServiceAPIKey), ctx, serviceID, id, at)
+}
+
+// SetServiceDefaults mocks base method.
+func (m *MockServiceRepository) SetServiceDefaults(ctx context.Context, name string, orgLimit int64, userLimit *int64) (model.Service, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SetServiceDefaults", ctx, name, orgLimit, userLimit)
+	ret0, _ := ret[0].(model.Service)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// SetServiceDefaults indicates an expected call of SetServiceDefaults.
+func (mr *MockServiceRepositoryMockRecorder) SetServiceDefaults(ctx, name, orgLimit, userLimit interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetServiceDefaults", reflect.TypeOf((*MockServiceRepository)(nil).SetServiceDefaults), ctx, name, orgLimit, userLimit)
 }
 
 // SetServiceEnabled mocks base method.

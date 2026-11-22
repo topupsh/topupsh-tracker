@@ -31,6 +31,7 @@ var (
 type deps struct {
 	services *repomocks.MockServiceRepository
 	credits  *repomocks.MockCreditRepository
+	usage    *repomocks.MockUsageRepository
 	ids      *idgenmocks.MockService
 }
 
@@ -40,11 +41,13 @@ func newController(t *testing.T) (Controller, deps) {
 	d := deps{
 		services: repomocks.NewMockServiceRepository(ctrl),
 		credits:  repomocks.NewMockCreditRepository(ctrl),
+		usage:    repomocks.NewMockUsageRepository(ctrl),
 		ids:      idgenmocks.NewMockService(ctrl),
 	}
 	c := New(Params{
 		Services: d.services,
 		Credits:  d.credits,
+		Usage:    d.usage,
 		IDGen:    d.ids,
 		Now:      func() time.Time { return _now },
 	})
@@ -97,11 +100,13 @@ func TestSetOrgLimits(t *testing.T) {
 	})
 	t.Run("defaults", func(t *testing.T) {
 		c, d := newController(t)
-		d.services.EXPECT().FindServiceByName(ctx, "mesher").Return(_mesher, nil)
+		withDefaults := _mesher
+		withDefaults.DefaultOrgLimit = 50
+		d.services.EXPECT().FindServiceByName(ctx, "mesher").Return(withDefaults, nil)
 		d.ids.EXPECT().NextID().Return(int64(1))
 		d.credits.EXPECT().UpsertOrgLimit(ctx, model.OrgLimit{
-			ID: 1, CreatedAt: _now, UpdatedAt: _now, ServiceID: 7, OrgID: "o1", MonthlyLimit: entity.DefaultOrgMonthlyLimit,
-		}).Return(model.OrgLimit{ID: 1, ServiceID: 7, OrgID: "o1"}, nil)
+			ID: 1, CreatedAt: _now, UpdatedAt: _now, ServiceID: 7, OrgID: "o1", MonthlyLimit: 50,
+		}).Return(model.OrgLimit{ID: 1, ServiceID: 7, OrgID: "o1", MonthlyLimit: 50}, nil)
 		rs, err := c.SetOrgLimits(ctx, &entity.SetOrgLimitsRequest{ServiceName: "mesher", OrgID: "o1"})
 		require.NoError(t, err)
 		assert.Nil(t, rs.OrgLimit.UserLimit, "users are uncapped")
@@ -220,4 +225,150 @@ func TestGrantExpiry(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, tc.want, GrantExpiry(at).Format(time.RFC3339), tc.at)
 	}
+}
+
+func TestSetServiceDefaults(t *testing.T) {
+	ctx := context.Background()
+	t.Run("ok", func(t *testing.T) {
+		c, d := newController(t)
+		saved := _mesher
+		saved.DefaultOrgLimit, saved.DefaultUserLimit = 100, ptr(10)
+		d.services.EXPECT().SetServiceDefaults(ctx, "mesher", int64(100), ptr(10)).Return(saved, nil)
+		rs, err := c.SetServiceDefaults(ctx, &entity.SetServiceDefaultsRequest{ServiceName: "mesher", OrgLimit: 100, UserLimit: ptr(10)})
+		require.NoError(t, err)
+		assert.Equal(t, entity.Service{ID: 7, Name: "mesher", Enabled: true, DefaultOrgLimit: 100, DefaultUserLimit: ptr(10)}, rs.Service)
+	})
+	t.Run("invalid", func(t *testing.T) {
+		c, _ := newController(t)
+		_, err := c.SetServiceDefaults(ctx, &entity.SetServiceDefaultsRequest{ServiceName: "mesher", OrgLimit: -1})
+		assert.ErrorIs(t, err, ErrInvalidLimit)
+		_, err = c.SetServiceDefaults(ctx, &entity.SetServiceDefaultsRequest{ServiceName: "mesher", UserLimit: ptr(-1)})
+		assert.ErrorIs(t, err, ErrInvalidLimit)
+	})
+	t.Run("not found", func(t *testing.T) {
+		c, d := newController(t)
+		d.services.EXPECT().SetServiceDefaults(ctx, "nope", int64(0), nil).Return(model.Service{}, repository.ErrNotFound)
+		_, err := c.SetServiceDefaults(ctx, &entity.SetServiceDefaultsRequest{ServiceName: "nope"})
+		assert.ErrorIs(t, err, ErrServiceNotFound)
+	})
+	t.Run("db error", func(t *testing.T) {
+		c, d := newController(t)
+		d.services.EXPECT().SetServiceDefaults(ctx, "mesher", int64(0), nil).Return(model.Service{}, errBoom)
+		_, err := c.SetServiceDefaults(ctx, &entity.SetServiceDefaultsRequest{ServiceName: "mesher"})
+		assert.ErrorIs(t, err, errBoom)
+	})
+}
+
+func TestListServices(t *testing.T) {
+	ctx := context.Background()
+	t.Run("ok", func(t *testing.T) {
+		c, d := newController(t)
+		tmphost := model.Service{ID: 8, Name: "tmphost"}
+		d.services.EXPECT().ListServices(ctx).Return([]model.Service{_mesher, tmphost}, nil)
+		d.services.EXPECT().ListServiceAPIKeys(ctx).Return([]model.ServiceAPIKey{
+			{ID: 2, ServiceID: 7, Prefix: "tpk_b"},
+			{ID: 1, ServiceID: 7, Prefix: "tpk_a", RevokedAt: &_now},
+		}, nil)
+		rs, err := c.ListServices(ctx, &entity.ListServicesRequest{})
+		require.NoError(t, err)
+		require.Len(t, rs.Services, 2)
+		assert.Equal(t, "mesher", rs.Services[0].Service.Name)
+		assert.Equal(t, []entity.ServiceAPIKey{
+			{ID: 2, ServiceID: 7, Prefix: "tpk_b"},
+			{ID: 1, ServiceID: 7, Prefix: "tpk_a", RevokedAt: &_now},
+		}, rs.Services[0].APIKeys)
+		assert.Equal(t, "tmphost", rs.Services[1].Service.Name)
+		assert.Empty(t, rs.Services[1].APIKeys)
+	})
+	t.Run("list services error", func(t *testing.T) {
+		c, d := newController(t)
+		d.services.EXPECT().ListServices(ctx).Return(nil, errBoom)
+		_, err := c.ListServices(ctx, &entity.ListServicesRequest{})
+		assert.ErrorIs(t, err, errBoom)
+	})
+	t.Run("list keys error", func(t *testing.T) {
+		c, d := newController(t)
+		d.services.EXPECT().ListServices(ctx).Return(nil, nil)
+		d.services.EXPECT().ListServiceAPIKeys(ctx).Return(nil, errBoom)
+		_, err := c.ListServices(ctx, &entity.ListServicesRequest{})
+		assert.ErrorIs(t, err, errBoom)
+	})
+}
+
+func TestListOrgUsage(t *testing.T) {
+	ctx := context.Background()
+	t.Run("ok", func(t *testing.T) {
+		c, d := newController(t)
+		d.services.EXPECT().FindServiceByName(ctx, "mesher").Return(_mesher, nil)
+		d.usage.EXPECT().ListOrgUsage(ctx, _mesher, _now).Return([]repository.OrgUsage{
+			{OrgLimit: model.OrgLimit{ID: 1, ServiceID: 7, OrgID: "o1", MonthlyLimit: 100, UserLimit: ptr(10)}, Custom: true, Used: 7},
+			{OrgLimit: model.OrgLimit{ServiceID: 7, OrgID: "o2"}, Used: 3},
+		}, nil)
+		rs, err := c.ListOrgUsage(ctx, &entity.ListOrgUsageRequest{ServiceName: "mesher"})
+		require.NoError(t, err)
+		assert.Equal(t, "mesher", rs.Service.Name)
+		assert.Equal(t, []entity.OrgUsage{
+			{OrgLimit: entity.OrgLimit{ID: 1, ServiceID: 7, OrgID: "o1", MonthlyLimit: 100, UserLimit: ptr(10)}, Custom: true, Used: 7},
+			{OrgLimit: entity.OrgLimit{ServiceID: 7, OrgID: "o2"}, Used: 3},
+		}, rs.Orgs)
+	})
+	t.Run("service not found", func(t *testing.T) {
+		c, d := newController(t)
+		d.services.EXPECT().FindServiceByName(ctx, "nope").Return(model.Service{}, repository.ErrNotFound)
+		_, err := c.ListOrgUsage(ctx, &entity.ListOrgUsageRequest{ServiceName: "nope"})
+		assert.ErrorIs(t, err, ErrServiceNotFound)
+	})
+	t.Run("db error", func(t *testing.T) {
+		c, d := newController(t)
+		d.services.EXPECT().FindServiceByName(ctx, "mesher").Return(_mesher, nil)
+		d.usage.EXPECT().ListOrgUsage(ctx, _mesher, _now).Return(nil, errBoom)
+		_, err := c.ListOrgUsage(ctx, &entity.ListOrgUsageRequest{ServiceName: "mesher"})
+		assert.ErrorIs(t, err, errBoom)
+	})
+}
+
+func TestListUserUsage(t *testing.T) {
+	ctx := context.Background()
+	t.Run("ok", func(t *testing.T) {
+		c, d := newController(t)
+		d.services.EXPECT().FindServiceByName(ctx, "mesher").Return(_mesher, nil)
+		d.usage.EXPECT().ListUserUsage(ctx, _mesher, "o1", _now, MaxUsageUsers+1).Return([]repository.UserUsage{
+			{OrgID: "o1", UserID: "u1", OrgLimit: model.OrgLimit{MonthlyLimit: 100, UserLimit: ptr(10)}, MonthlyUsed: 3, Grants: 5, Balance: 12},
+			{OrgID: "o1", UserID: "u2", OrgLimit: model.OrgLimit{MonthlyLimit: 100}, Balance: 100},
+		}, nil)
+		rs, err := c.ListUserUsage(ctx, &entity.ListUserUsageRequest{ServiceName: "mesher", OrgID: "o1"})
+		require.NoError(t, err)
+		assert.False(t, rs.Truncated)
+		assert.Equal(t, []entity.UserUsage{
+			{OrgID: "o1", UserID: "u1", MonthlyAllowance: 10, MonthlyUsed: 3, Grants: 5, Balance: 12},
+			{OrgID: "o1", UserID: "u2", MonthlyAllowance: 100, Balance: 100},
+		}, rs.Users)
+	})
+	t.Run("truncated", func(t *testing.T) {
+		c, d := newController(t)
+		d.services.EXPECT().FindServiceByName(ctx, "mesher").Return(_mesher, nil)
+		d.usage.EXPECT().ListUserUsage(ctx, _mesher, "", _now, MaxUsageUsers+1).Return(make([]repository.UserUsage, MaxUsageUsers+1), nil)
+		rs, err := c.ListUserUsage(ctx, &entity.ListUserUsageRequest{ServiceName: "mesher"})
+		require.NoError(t, err)
+		assert.True(t, rs.Truncated)
+		assert.Len(t, rs.Users, MaxUsageUsers)
+	})
+	t.Run("invalid org", func(t *testing.T) {
+		c, _ := newController(t)
+		_, err := c.ListUserUsage(ctx, &entity.ListUserUsageRequest{ServiceName: "mesher", OrgID: strings.Repeat("o", 65)})
+		assert.ErrorIs(t, err, ErrInvalidOrg)
+	})
+	t.Run("service not found", func(t *testing.T) {
+		c, d := newController(t)
+		d.services.EXPECT().FindServiceByName(ctx, "nope").Return(model.Service{}, repository.ErrNotFound)
+		_, err := c.ListUserUsage(ctx, &entity.ListUserUsageRequest{ServiceName: "nope"})
+		assert.ErrorIs(t, err, ErrServiceNotFound)
+	})
+	t.Run("db error", func(t *testing.T) {
+		c, d := newController(t)
+		d.services.EXPECT().FindServiceByName(ctx, "mesher").Return(_mesher, nil)
+		d.usage.EXPECT().ListUserUsage(ctx, _mesher, "", _now, MaxUsageUsers+1).Return(nil, errBoom)
+		_, err := c.ListUserUsage(ctx, &entity.ListUserUsageRequest{ServiceName: "mesher"})
+		assert.ErrorIs(t, err, errBoom)
+	})
 }

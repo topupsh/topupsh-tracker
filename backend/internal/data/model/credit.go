@@ -24,8 +24,8 @@ type (
 		ServiceID int64  `gorm:"uniqueIndex:idx_org_limits_service_org;not null"`
 		OrgID     string `gorm:"type:varchar(64);uniqueIndex:idx_org_limits_service_org;not null"`
 		// MonthlyLimit is the credits the whole org may use in a month. It
-		// defaults to 0, as does an org without a row
-		// (entity.DefaultOrgMonthlyLimit).
+		// defaults to 0; an org without a row gets its service's
+		// DefaultOrgLimit.
 		MonthlyLimit int64 `gorm:"not null;default:0"`
 		// UserLimit is the credits each user of the org may use in a month;
 		// nil means uncapped.

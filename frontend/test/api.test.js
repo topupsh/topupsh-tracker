@@ -186,3 +186,81 @@ describe('admin api', () => {
     await expect(api.fetchAdminUser('nope')).rejects.toMatchObject({ message: 'user not found', status: 404 })
   })
 })
+
+describe('credit admin api', () => {
+  const GET = { method: 'GET', credentials: 'same-origin' }
+  const withBody = (method, body) => ({
+    method,
+    credentials: 'same-origin',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+
+  beforeEach(() => {
+    globalThis.fetch = vi.fn()
+  })
+
+  it('listServices unwraps the services', async () => {
+    const api = await loadApi('')
+    fetch.mockResolvedValueOnce(json({ services: [{ name: 'mesher' }] }))
+    expect(await api.listServices()).toEqual([{ name: 'mesher' }])
+    expect(fetch).toHaveBeenCalledWith('/api/v1/services', GET)
+  })
+
+  it('creates and revokes service keys', async () => {
+    const api = await loadApi('')
+    fetch.mockResolvedValueOnce(json({ apiKey: { id: 'k1' }, key: 'tpk_x' }, 201))
+    expect(await api.createServiceKey('my svc')).toEqual({ apiKey: { id: 'k1' }, key: 'tpk_x' })
+    expect(fetch).toHaveBeenLastCalledWith('/api/v1/services/my%20svc/keys', { method: 'POST', credentials: 'same-origin' })
+
+    fetch.mockResolvedValueOnce({ ok: true, status: 204, json: async () => null })
+    await api.revokeServiceKey('mesher', 'k1')
+    expect(fetch).toHaveBeenLastCalledWith('/api/v1/services/mesher/keys/k1', { method: 'DELETE', credentials: 'same-origin' })
+
+    fetch.mockResolvedValueOnce(json({ error: 'key not found' }, 404))
+    await expect(api.revokeServiceKey('mesher', 'k2')).rejects.toMatchObject({ message: 'key not found', status: 404 })
+    fetch.mockResolvedValueOnce(json({}, 500))
+    await expect(api.createServiceKey('mesher')).rejects.toThrow('Failed to create API key (500)')
+  })
+
+  it('sets the switch, the defaults and org limits', async () => {
+    const api = await loadApi('')
+    fetch.mockResolvedValue(json({ name: 'mesher' }))
+    await api.setServiceEnabled('mesher', true)
+    expect(fetch).toHaveBeenLastCalledWith('/api/v1/services/mesher/enabled', withBody('PUT', { enabled: true }))
+    await api.setServiceDefaults('mesher', { orgLimit: 10, userLimit: null })
+    expect(fetch).toHaveBeenLastCalledWith('/api/v1/services/mesher/defaults', withBody('PUT', { orgLimit: 10, userLimit: null }))
+    await api.setOrgLimits('mesher', 'o/1', { orgLimit: 5, userLimit: 2 })
+    expect(fetch).toHaveBeenLastCalledWith('/api/v1/orgs/o%2F1/limits', withBody('PUT', { service: 'mesher', orgLimit: 5, userLimit: 2 }))
+  })
+
+  it('lists org and user usage', async () => {
+    const api = await loadApi('')
+    fetch.mockResolvedValueOnce(json({ orgs: [{ org: 'o1' }] }))
+    expect(await api.listOrgUsage('mesher')).toEqual([{ org: 'o1' }])
+    expect(fetch).toHaveBeenLastCalledWith('/api/v1/services/mesher/orgs', GET)
+
+    fetch.mockResolvedValue(json({ users: [], truncated: false }))
+    expect(await api.listUserUsage('mesher')).toEqual({ users: [], truncated: false })
+    expect(fetch).toHaveBeenLastCalledWith('/api/v1/services/mesher/users', GET)
+    await api.listUserUsage('mesher', 'o 1')
+    expect(fetch).toHaveBeenLastCalledWith('/api/v1/services/mesher/users?org=o+1', GET)
+  })
+
+  it('creates a grant', async () => {
+    const api = await loadApi('')
+    fetch.mockResolvedValueOnce(json({ id: 'g1' }, 201))
+    const grant = { service: 'mesher', org: 'o1', user: 'u1', credits: 5 }
+    expect(await api.createGrant(grant)).toEqual({ id: 'g1' })
+    expect(fetch).toHaveBeenLastCalledWith('/api/v1/grants', withBody('POST', grant))
+  })
+
+  it('listLedger filters and pages the ledger', async () => {
+    const api = await loadApi('')
+    fetch.mockResolvedValue(json({ entries: [] }))
+    expect(await api.listLedger()).toEqual({ entries: [] })
+    expect(fetch).toHaveBeenLastCalledWith('/api/v1/ledger?limit=50', GET)
+    await api.listLedger({ service: 'mesher', org: 'o1', user: 'u1', cursor: 'c' })
+    expect(fetch).toHaveBeenLastCalledWith('/api/v1/ledger?limit=50&service=mesher&org=o1&user=u1&cursor=c', GET)
+  })
+})

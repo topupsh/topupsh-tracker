@@ -12,6 +12,8 @@ type (
 		// Prefix is the start of the key, to tell keys apart.
 		Prefix    string `json:"prefix"`
 		CreatedAt string `json:"createdAt"`
+		// RevokedAt is set once the key is revoked.
+		RevokedAt string `json:"revokedAt,omitempty"`
 	}
 
 	// CreateServiceAPIKeyResponse carries a new key. Key is shown only

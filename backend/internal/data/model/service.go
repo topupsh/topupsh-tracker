@@ -16,6 +16,12 @@ type (
 		// Enabled switches credit limiting on for the service. It is off
 		// by default: nothing is charged or recorded while it is off.
 		Enabled bool `gorm:"not null;default:false"`
+		// DefaultOrgLimit is the monthly org limit of orgs the admin set no
+		// limits for (entity.DefaultOrgMonthlyLimit until changed).
+		DefaultOrgLimit int64 `gorm:"not null;default:0"`
+		// DefaultUserLimit is the user limit of those orgs; nil means
+		// uncapped.
+		DefaultUserLimit *int64
 	}
 
 	// ServiceAPIKey is a key a service calls the API with. Only the key's

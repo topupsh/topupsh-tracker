@@ -74,7 +74,7 @@ func (r *balanceRepository) GetBalance(ctx context.Context, serviceID int64, org
 		if b.Service, err = findService(tx, serviceID); err != nil {
 			return err
 		}
-		if b.OrgLimit, err = findOrgLimit(tx, serviceID, orgID); err != nil {
+		if b.OrgLimit, err = findOrgLimit(tx, b.Service, orgID); err != nil {
 			return err
 		}
 		if err := tx.Model(&model.CreditBucket{}).
@@ -123,13 +123,18 @@ func findService(q *gorm.DB, id int64) (model.Service, error) {
 	return s, err
 }
 
-// findOrgLimit returns the org's limits, or the defaults when the admin set
-// none: an org limit of entity.DefaultOrgMonthlyLimit and uncapped users.
-func findOrgLimit(q *gorm.DB, serviceID int64, orgID string) (model.OrgLimit, error) {
+// findOrgLimit returns the org's limits, or its service's default limits
+// when the admin set none.
+func findOrgLimit(q *gorm.DB, s model.Service, orgID string) (model.OrgLimit, error) {
 	var ol model.OrgLimit
-	err := q.Where("service_id = ? AND org_id = ?", serviceID, orgID).First(&ol).Error
+	err := q.Where("service_id = ? AND org_id = ?", s.ID, orgID).First(&ol).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return model.OrgLimit{ServiceID: serviceID, OrgID: orgID, MonthlyLimit: entity.DefaultOrgMonthlyLimit}, nil
+		return defaultOrgLimit(s, orgID), nil
 	}
 	return ol, err
+}
+
+// defaultOrgLimit is the limits of an org of s the admin set none for.
+func defaultOrgLimit(s model.Service, orgID string) model.OrgLimit {
+	return model.OrgLimit{ServiceID: s.ID, OrgID: orgID, MonthlyLimit: s.DefaultOrgLimit, UserLimit: s.DefaultUserLimit}
 }

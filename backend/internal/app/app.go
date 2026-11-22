@@ -206,6 +206,7 @@ func New(cfg Config, web fs.FS) (*App, error) {
 		CreditAdmin: creditadminctrl.New(creditadminctrl.Params{
 			Services: services,
 			Credits:  repository.NewCreditRepository(db),
+			Usage:    repository.NewUsageRepository(db),
 			IDGen:    ids,
 		}),
 		Charges: chargectrl.New(chargectrl.Params{
