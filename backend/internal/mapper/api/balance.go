@@ -118,7 +118,7 @@ func FromHTTPRequestToCreateViewTokenRequestEntity(c fiber.Ctx) *entity.CreateVi
 
 // FromCreateViewTokenResponseEntityToHTTPResponse renders a view token.
 func FromCreateViewTokenResponseEntityToHTTPResponse(rs *entity.CreateViewTokenResponse) []byte {
-	return marshal(view.ViewToken{Token: rs.Token, ExpiresAt: rs.ExpiresAt.UTC().Format(time.RFC3339)})
+	return marshal(view.ViewToken{Token: rs.Token, ExpiresAt: rs.ExpiresAt.UTC().Format(time.RFC3339), URL: rs.URL})
 }
 
 // FromHTTPRequestToAuthenticateViewerRequestEntity reads the view token in

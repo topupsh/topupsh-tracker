@@ -264,3 +264,26 @@ describe('credit admin api', () => {
     expect(fetch).toHaveBeenLastCalledWith('/api/v1/ledger?limit=50&service=mesher&org=o1&user=u1&cursor=c', GET)
   })
 })
+
+describe('viewer api', () => {
+  beforeEach(() => {
+    globalThis.fetch = vi.fn()
+  })
+
+  it('reads the balance and pages the history with the view token', async () => {
+    const api = await loadApi('')
+    const auth = { headers: { Authorization: 'Bearer tok' } }
+    fetch.mockResolvedValueOnce(json({ balance: 5 }))
+    expect(await api.fetchViewerBalance('tok')).toEqual({ balance: 5 })
+    expect(fetch).toHaveBeenLastCalledWith('/api/v1/balances', auth)
+
+    fetch.mockResolvedValue(json({ entries: [] }))
+    await api.listViewerLedger('tok')
+    expect(fetch).toHaveBeenLastCalledWith('/api/v1/ledger?limit=50', auth)
+    await api.listViewerLedger('tok', 'c1')
+    expect(fetch).toHaveBeenLastCalledWith('/api/v1/ledger?limit=50&cursor=c1', auth)
+
+    fetch.mockResolvedValueOnce(json({ error: 'invalid token' }, 401))
+    await expect(api.fetchViewerBalance('old')).rejects.toMatchObject({ message: 'invalid token', status: 401 })
+  })
+})

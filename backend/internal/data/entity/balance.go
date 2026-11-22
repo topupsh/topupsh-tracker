@@ -104,6 +104,9 @@ type (
 	CreateViewTokenResponse struct {
 		Token     string
 		ExpiresAt time.Time
+		// URL opens the user's balance page with the token; empty when
+		// the app has no base URL.
+		URL string
 	}
 
 	// AuthenticateViewerRequest carries a view token.

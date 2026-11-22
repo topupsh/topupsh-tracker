@@ -1326,6 +1326,13 @@ components:
         expiresAt:
           type: string
           format: date-time
+        url:
+          type: string
+          format: uri
+          description: |
+            The user's balance page with the token in the fragment
+            (`<baseUrl>/balance#token=...`), for the service to link its
+            user to. Left out when the app has no base URL.
 
     Settings:
       type: object

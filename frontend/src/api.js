@@ -231,3 +231,26 @@ export function listLedger({ service = '', org = '', user = '', cursor = '' } = 
   }
   return request(`/ledger?${query}`, { fallback: 'Failed to load ledger' })
 }
+
+// viewerRequest reads as the user a service-issued view token names: the
+// token alone says which service, org and user. Failures throw an Error
+// carrying the HTTP status (401 once the token has expired).
+async function viewerRequest(path, token, fallback) {
+  const res = await fetch(`${API_BASE_URL}${path}`, { headers: { Authorization: `Bearer ${token}` } })
+  if (!res.ok) throw await httpError(res, `${fallback} (${res.status})`)
+  return res.json()
+}
+
+// fetchViewerBalance returns the view token's user's balance: { service,
+// balance, available, monthly, orgUsage, grants, renewsAt, limited }.
+export function fetchViewerBalance(token) {
+  return viewerRequest('/balances', token, 'Failed to load your balance')
+}
+
+// listViewerLedger returns a page of the view token's user's history,
+// newest first, as { entries, nextCursor }.
+export function listViewerLedger(token, cursor = '') {
+  const query = new URLSearchParams({ limit: String(LEDGER_PAGE_SIZE) })
+  if (cursor) query.set('cursor', cursor)
+  return viewerRequest(`/ledger?${query}`, token, 'Failed to load your history')
+}

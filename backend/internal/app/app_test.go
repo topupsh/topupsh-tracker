@@ -273,3 +273,9 @@ func TestFiberConfig(t *testing.T) {
 
 	assert.Equal(t, "X-Forwarded-For", fiberConfig(AppConfig{TrustedProxies: "10.0.0.1"}).ProxyHeader)
 }
+
+func TestBalancePageURL(t *testing.T) {
+	assert.Empty(t, balancePageURL(""))
+	assert.Equal(t, "https://topup.sh/balance", balancePageURL("https://topup.sh/"))
+	assert.Equal(t, "https://x.io/app/balance", balancePageURL("https://x.io/app"))
+}
