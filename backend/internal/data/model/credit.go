@@ -47,8 +47,9 @@ type (
 		ExpiresAt time.Time `gorm:"index;not null"`
 	}
 
-	// Charge is one spend a service asked for. RequestID is unique per
-	// service, so a retried request never charges twice.
+	// Charge is one spend a service asked for, refused or not. RequestID
+	// is unique per service, so a retried request never charges twice and
+	// gets the stored outcome back.
 	Charge struct {
 		ID        int64 `gorm:"primaryKey;autoIncrement:false"`
 		CreatedAt time.Time
@@ -58,8 +59,27 @@ type (
 		UserID    string `gorm:"type:varchar(64);not null"`
 		Credits   int64  `gorm:"not null"`
 		Operation string `gorm:"type:varchar(255)"`
+		// Refusal is why the charge was refused ("org_limit" or
+		// "user_limit"); empty means it was charged.
+		Refusal string `gorm:"type:varchar(16);not null;default:''"`
+		// Balance is the user's unexpired credits after the charge.
+		Balance int64 `gorm:"not null;default:0"`
+		// OrgRemaining is what was left of the org limit after the charge.
+		OrgRemaining int64 `gorm:"not null;default:0"`
 		// RefundedAt is set once the charge is refunded.
 		RefundedAt *time.Time
+		// RefundedCredits is what the refund gave back: credits whose
+		// bucket had expired by then are not returned.
+		RefundedCredits int64 `gorm:"not null;default:0"`
+	}
+
+	// ChargeSpend is the credits a charge took from one bucket, so a refund
+	// can return them to the same bucket.
+	ChargeSpend struct {
+		ID       int64 `gorm:"primaryKey;autoIncrement:false"`
+		ChargeID int64 `gorm:"index;not null"`
+		BucketID int64 `gorm:"not null"`
+		Credits  int64 `gorm:"not null"`
 	}
 
 	// LedgerEntry is one change to a user's balance. Entries are written in
@@ -70,7 +90,8 @@ type (
 		ServiceID int64  `gorm:"index:idx_ledger_entries_subject,priority:1;not null"`
 		OrgID     string `gorm:"type:varchar(64);index:idx_ledger_entries_subject,priority:2;not null"`
 		UserID    string `gorm:"type:varchar(64);index:idx_ledger_entries_subject,priority:3;not null"`
-		// Kind is "spend", "refund", "grant", "renewal" or "expiry".
+		// Kind is "spend", "refund", "grant", "renewal", "limit" or
+		// "expiry".
 		Kind string `gorm:"type:varchar(16);not null"`
 		// Amount is signed: negative takes credits away.
 		Amount       int64 `gorm:"not null"`

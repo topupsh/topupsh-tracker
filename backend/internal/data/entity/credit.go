@@ -22,7 +22,16 @@ const (
 	LedgerKindRefund  LedgerKind = "refund"
 	LedgerKindGrant   LedgerKind = "grant"
 	LedgerKindRenewal LedgerKind = "renewal"
-	LedgerKindExpiry  LedgerKind = "expiry"
+	// LedgerKindLimit resizes a user's monthly bucket after an admin
+	// changed the org's limits.
+	LedgerKindLimit  LedgerKind = "limit"
+	LedgerKindExpiry LedgerKind = "expiry"
+)
+
+// Charge refusals.
+const (
+	RefusalOrgLimit  Refusal = "org_limit"
+	RefusalUserLimit Refusal = "user_limit"
 )
 
 type (
@@ -31,6 +40,9 @@ type (
 
 	// LedgerKind says what changed a balance.
 	LedgerKind string
+
+	// Refusal says which limit refused a charge; empty means charged.
+	Refusal string
 
 	// Service is a product that charges credits, e.g. mesher or tmphost.
 	Service struct {
@@ -73,17 +85,23 @@ type (
 		ExpiresAt time.Time
 	}
 
-	// Charge is one spend a service asked for.
+	// Charge is one spend a service asked for, and its outcome.
 	Charge struct {
-		ID         int64
-		ServiceID  int64
-		RequestID  string
-		OrgID      string
-		UserID     string
-		Credits    int64
-		Operation  string
-		CreatedAt  time.Time
-		RefundedAt *time.Time
+		ID        int64
+		ServiceID int64
+		RequestID string
+		OrgID     string
+		UserID    string
+		Credits   int64
+		Operation string
+		Refusal   Refusal
+		// Balance is the user's unexpired credits after the charge.
+		Balance int64
+		// OrgRemaining is what was left of the org limit after the charge.
+		OrgRemaining    int64
+		CreatedAt       time.Time
+		RefundedAt      *time.Time
+		RefundedCredits int64
 	}
 
 	// LedgerEntry is one change to a user's balance.

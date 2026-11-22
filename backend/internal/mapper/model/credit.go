@@ -74,7 +74,8 @@ func FromChargeModelToChargeEntity(m model.Charge) entity.Charge {
 	return entity.Charge{
 		ID: m.ID, ServiceID: m.ServiceID, RequestID: m.RequestID, OrgID: m.OrgID,
 		UserID: m.UserID, Credits: m.Credits, Operation: m.Operation,
-		CreatedAt: m.CreatedAt, RefundedAt: m.RefundedAt,
+		Refusal: entity.Refusal(m.Refusal), Balance: m.Balance, OrgRemaining: m.OrgRemaining,
+		CreatedAt: m.CreatedAt, RefundedAt: m.RefundedAt, RefundedCredits: m.RefundedCredits,
 	}
 }
 
@@ -83,7 +84,8 @@ func FromChargeEntityToChargeModel(e entity.Charge) model.Charge {
 	return model.Charge{
 		ID: e.ID, ServiceID: e.ServiceID, RequestID: e.RequestID, OrgID: e.OrgID,
 		UserID: e.UserID, Credits: e.Credits, Operation: e.Operation,
-		CreatedAt: e.CreatedAt, RefundedAt: e.RefundedAt,
+		Refusal: string(e.Refusal), Balance: e.Balance, OrgRemaining: e.OrgRemaining,
+		CreatedAt: e.CreatedAt, RefundedAt: e.RefundedAt, RefundedCredits: e.RefundedCredits,
 	}
 }
 

@@ -17,6 +17,7 @@ import (
 
 	adminctrl "github.com/topupsh/topupsh-tracker/backend/internal/controller/admin"
 	authctrl "github.com/topupsh/topupsh-tracker/backend/internal/controller/auth"
+	chargectrl "github.com/topupsh/topupsh-tracker/backend/internal/controller/charge"
 	creditadminctrl "github.com/topupsh/topupsh-tracker/backend/internal/controller/creditadmin"
 	servicekeyctrl "github.com/topupsh/topupsh-tracker/backend/internal/controller/servicekey"
 	setupctrl "github.com/topupsh/topupsh-tracker/backend/internal/controller/setup"
@@ -54,6 +55,8 @@ type Params struct {
 	ServiceKeys servicekeyctrl.Controller
 	// CreditAdmin changes the admin's credit settings.
 	CreditAdmin creditadminctrl.Controller
+	// Charges spends and refunds credits for the services.
+	Charges chargectrl.Controller
 	// AllowedOrigins returns the other web origins that may call the API
 	// from a browser. It may be nil.
 	AllowedOrigins func() []string
@@ -75,6 +78,7 @@ func New(p Params) {
 	admin := &Admin{controller: p.Admin}
 	serviceKey := &ServiceKey{controller: p.ServiceKeys}
 	creditAdmin := &CreditAdmin{controller: p.CreditAdmin}
+	charge := &Charge{controller: p.Charges}
 	setup := &Setup{controller: p.Setup, basePath: basePath, cookieSecure: p.CookieSecure}
 
 	if p.Hosts != nil {
@@ -107,6 +111,10 @@ func New(p Params) {
 	r.Put("/services/:service/enabled", root, creditAdmin.UpdateServiceEnabled)
 	r.Put("/orgs/:org/limits", root, creditAdmin.UpdateOrgLimits)
 	r.Post("/grants", root, creditAdmin.CreateGrant)
+
+	svc := AuthenticateService(p.ServiceKeys)
+	r.Post("/charges", svc, charge.Create)
+	r.Post("/refunds", svc, charge.CreateRefund)
 
 	a := p.Router.Group(AdminPrefix, root)
 	a.Get("/stats", admin.GetStats)

@@ -364,6 +364,120 @@ paths:
         "500":
           $ref: "#/components/responses/ServerError"
 
+  /api/v1/charges:
+    post:
+      tags: [Credits]
+      operationId: createCharge
+      summary: Charge a user's credits
+      description: |
+        Spends a user's credits for one operation, in one transaction. The
+        org limit is checked first, then the user's credits; credits are
+        spent oldest bucket first. Grant credits don't count against the
+        org limit, so a grant still works once the org limit is used up.
+        A refused charge spends nothing. The request ID makes a retry
+        safe, because a retry returns the original outcome, refused or
+        not. While the service's credit limiting is off, every charge
+        succeeds with `limited` false and nothing is spent or recorded.
+      security:
+        - serviceKey: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [requestId, org, user, credits]
+              properties:
+                requestId:
+                  type: string
+                  maxLength: 128
+                  description: Unique per service; a retry reuses it.
+                org:
+                  type: string
+                  maxLength: 64
+                user:
+                  type: string
+                  maxLength: 64
+                credits:
+                  type: integer
+                  format: int64
+                  minimum: 1
+                operation:
+                  type: string
+                  maxLength: 255
+                  example: github.create_issue
+      responses:
+        "200":
+          description: Charged, or credit limiting is off.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Charge"
+        "402":
+          description: Refused by the org limit or the user limit.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Charge"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          description: The request ID was used for another org, user or number of credits.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          $ref: "#/components/responses/ServerError"
+
+  /api/v1/refunds:
+    post:
+      tags: [Credits]
+      operationId: createRefund
+      summary: Refund a charge
+      description: |
+        Gives a charge back to the buckets it came from, once, and records
+        it in the ledger; a retry returns the same refund. Credits whose
+        bucket has expired since are not returned. While the service's
+        credit limiting is off, refunding an unknown request ID succeeds
+        with `limited` false.
+      security:
+        - serviceKey: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [requestId]
+              properties:
+                requestId:
+                  type: string
+                  maxLength: 128
+      responses:
+        "200":
+          description: The refund.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Refund"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: The charge was refused, so there is nothing to refund.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          $ref: "#/components/responses/ServerError"
+
   /auth/config:
     get:
       tags: [Sign-in]
@@ -629,6 +743,55 @@ components:
           type: integer
           format: int64
           description: The user's unexpired credits, this grant included.
+
+    Charge:
+      type: object
+      required: [requestId, charged, limited]
+      properties:
+        requestId:
+          type: string
+        charged:
+          type: boolean
+        limited:
+          type: boolean
+          description: False while the service's credit limiting is off.
+        reason:
+          type: string
+          enum: [org_limit, user_limit]
+          description: Why a refused charge was refused.
+        renewsAt:
+          type: string
+          format: date-time
+          description: When a refused charge's monthly limits renew (the 1st, 00:00 UTC).
+        balance:
+          type: integer
+          format: int64
+          description: The user's unexpired credits after the charge.
+        orgRemaining:
+          type: integer
+          format: int64
+          description: What is left of the org limit this month.
+
+    Refund:
+      type: object
+      required: [requestId, limited, credits]
+      properties:
+        requestId:
+          type: string
+        limited:
+          type: boolean
+          description: False for an unknown request while credit limiting is off.
+        credits:
+          type: integer
+          format: int64
+          description: The credits given back.
+        refundedAt:
+          type: string
+          format: date-time
+        balance:
+          type: integer
+          format: int64
+          description: The user's unexpired credits now.
 
     Settings:
       type: object

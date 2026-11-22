@@ -49,8 +49,8 @@ func TestCreditBucketMappers(t *testing.T) {
 
 func TestChargeMappers(t *testing.T) {
 	now := time.Now()
-	m := model.Charge{ID: 5, ServiceID: 1, RequestID: "r", OrgID: "o", UserID: "u", Credits: 1, Operation: "tool", CreatedAt: now, RefundedAt: &now}
-	e := entity.Charge{ID: 5, ServiceID: 1, RequestID: "r", OrgID: "o", UserID: "u", Credits: 1, Operation: "tool", CreatedAt: now, RefundedAt: &now}
+	m := model.Charge{ID: 5, ServiceID: 1, RequestID: "r", OrgID: "o", UserID: "u", Credits: 1, Operation: "tool", Refusal: "user_limit", Balance: 3, OrgRemaining: 4, CreatedAt: now, RefundedAt: &now, RefundedCredits: 1}
+	e := entity.Charge{ID: 5, ServiceID: 1, RequestID: "r", OrgID: "o", UserID: "u", Credits: 1, Operation: "tool", Refusal: "user_limit", Balance: 3, OrgRemaining: 4, CreatedAt: now, RefundedAt: &now, RefundedCredits: 1}
 	assert.Equal(t, e, FromChargeModelToChargeEntity(m))
 	assert.Equal(t, m, FromChargeEntityToChargeModel(e))
 }

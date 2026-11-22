@@ -25,7 +25,7 @@ func newDB(t *testing.T) *gorm.DB {
 
 func TestModels_Migrate(t *testing.T) {
 	db := newDB(t)
-	for _, table := range []string{"users", "services", "service_api_keys", "org_limits", "credit_buckets", "charges", "ledger_entries"} {
+	for _, table := range []string{"users", "services", "service_api_keys", "org_limits", "credit_buckets", "charges", "charge_spends", "ledger_entries"} {
 		assert.True(t, db.Migrator().HasTable(table), table)
 	}
 	for table, index := range map[string]string{
