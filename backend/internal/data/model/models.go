@@ -8,6 +8,6 @@ package model
 func Models() []any {
 	return []any{
 		&User{}, &Service{}, &ServiceAPIKey{}, &OrgLimit{},
-		&CreditBucket{}, &Charge{}, &LedgerEntry{},
+		&CreditBucket{}, &Charge{}, &ChargeSpend{}, &LedgerEntry{},
 	}
 }
